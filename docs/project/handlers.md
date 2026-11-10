@@ -9,4 +9,4 @@
 - 新推送历史的 `handler_trace` 留空；已有历史与 trace 不因移除功能而擦除。
 - 共用条目 DTO `EntryContentContext` 移到 `src/application/services/entry_content.py`，仅用于解析、格式化和历史上下文。
 
-推送历史、失败重试、成功态幂等、多 BOT 去重、会话队列与媒体发送沿用原版。详见 [分发与推送历史](./dispatch.md) 和 [领域模型](./domain-model.md)。
+推送历史、失败重试、成功态幂等、多 BOT 去重和会话队列保留原版基础机制；显示与媒体发送遵循 lite 的独立配置和平台边界。详见 [分发与推送历史](./dispatch.md)、[领域模型](./domain-model.md) 和[平台规则](./platforms.md)。

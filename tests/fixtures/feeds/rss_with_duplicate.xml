@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Duplicate Test Feed</title>
+    <link>https://example.com/duplicate</link>
+    <description>Feed with duplicate entries for testing deduplication</description>
+    <item>
+      <title>Unique Article 1</title>
+      <link>https://example.com/unique1</link>
+      <guid>unique-guid-001</guid>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+      <description>This is a unique article</description>
+    </item>
+    <item>
+      <title>Duplicate Article</title>
+      <link>https://example.com/duplicate-link</link>
+      <guid>duplicate-guid-002</guid>
+      <pubDate>Sun, 31 Dec 2023 00:00:00 GMT</pubDate>
+      <description>This article will have duplicates</description>
+    </item>
+    <item>
+      <title>Duplicate Article</title>
+      <link>https://example.com/duplicate-link</link>
+      <guid>duplicate-guid-002</guid>
+      <pubDate>Sun, 31 Dec 2023 00:00:00 GMT</pubDate>
+      <description>This article will have duplicates</description>
+    </item>
+    <item>
+      <title>Similar Title Article</title>
+      <link>https://example.com/similar1</link>
+      <guid>similar-guid-003</guid>
+      <pubDate>Sat, 30 Dec 2023 00:00:00 GMT</pubDate>
+      <description>Different content but similar title</description>
+    </item>
+    <item>
+      <title>Similar Title Article</title>
+      <link>https://example.com/similar2</link>
+      <guid>similar-guid-004</guid>
+      <pubDate>Fri, 29 Dec 2023 00:00:00 GMT</pubDate>
+      <description>Different content and different link</description>
+    </item>
+  </channel>
+</rss>

@@ -214,7 +214,7 @@ class HttpConfig(BaseModel):
 
 
 class RsshubPluginConfig(BaseModel):
-    """RSSHub 插件统一配置类"""
+    """RssHub lite 插件统一配置类"""
 
     config_version: int = CONFIG_VERSION
     basic_config: BasicConfig = Field(default_factory=BasicConfig)

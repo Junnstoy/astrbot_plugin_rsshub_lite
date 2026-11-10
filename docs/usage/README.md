@@ -1,6 +1,6 @@
 # 使用文档
 
-本目录说明 AstrBot RSSHub 精简版的基础功能。
+本目录说明 RssHub lite的基础功能。
 
 - [命令说明](./commands.md)：订阅、启停、配置、TOML 导入导出和测试推送。
 - [配置说明](./configuration.md)：启动配置、媒体、平台发送策略与旧配置兼容。

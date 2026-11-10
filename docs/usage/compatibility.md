@@ -17,10 +17,13 @@
 
 ## 平台差异
 
-- OneBot / NapCat 经典排版按合并转发发送；失败后会回退为纯文本 nodes。
-- OneBot 原始顺序排版会按 RSS/HTML 解析出的布局片段逐条发送，适合多图长文。
-- Telegram 多媒体自动策略可使用 Telegraph 分流；本地图片超过 Bot API photo 限制时会降级为文件发送。
-- QQ Official 当前主动推送临时统一为纯文本 Markdown 行为，待 AstrBot core 主动推送的消息级 Markdown 行为稳定后再恢复三态策略。
+- 普通推送的 `send_mode=1` 直接发送，`2` 合并转发；`style` 只决定排版，不再隐式切换发送方式。
+- 真正的合并转发和 `/feed` 当前仅支持 OneBot；其他平台明确返回不支持。
+- `merge_media=1` 时，Telegram 支持单图/单视频配正文，QQ Official 支持单图文；两者不支持多媒体同条，QQ Official 也不支持视频和正文同条。Weixin OC 不支持图文或多媒体同条组合。
+- `merge_media=0` 时，Telegram、QQ Official、Weixin OC 按格式化顺序逐项发送，并保留各平台媒体候选降级。Telegram 的大图可按平台路径转为文件。
+- QQ Official 当前主动推送保持纯文本，不承诺消息级 Markdown。旧 Telegraph 自动策略不是当前直接/合并模式的选择入口。
+
+平台规则与实现边界见[平台与媒体](../project/platforms.md)。
 
 ## 升级兼容
 

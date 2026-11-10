@@ -1,88 +1,161 @@
-# RSSHub for AstrBot · 无 AI 裁剪版
+# RssHub lite
 
-本版本直接基于 [AstrBot-Elementary-School/astrbot_plugin_rsshub](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub) **v2.1.4** 裁剪，基线提交为 `a047f46e47cb2a0f7a795f30b9f82ae027005846`。数据库、订阅、抓取、去重和推送优先沿用原版实现。
+为 AstrBot 提供 RSS、Atom、JSON Feed 订阅与推送，保留定时抓取、去重、媒体、失败重试和管理页面，移除 AI 内容处理器、LLM 工具和知识库。
 
-## 保留的功能
+**插件 ID：** `astrbot_plugin_rsshub_lite` · **首个公开版本：** `v0.1.0` · **AstrBot：** `>=4.24.0`
 
-- RSS、Atom、JSON Feed 订阅，支持完整 URL 和 RSSHub 路由。
-- 订阅增删、分页列表、持续启停、最新 N 条即时发送、用户/会话默认配置、TOML 导入导出。
-- 原版定时调度、条件 GET、首次跳过历史、指纹去重与成功投递幂等。
-- 原版会话发送队列、平台适配、图文媒体处理、失败降级与重试。
-- 基础管理页面：订阅、用户、Feed、推送历史、默认设置和数据管理。
-- SQLite、基于原版扩展的 SQLModel 模型、数据库迁移与 Repository。
+[源码](https://github.com/Junnstoy/astrbot_plugin_rsshub_lite) · [发布包](https://github.com/Junnstoy/astrbot_plugin_rsshub_lite/releases) · [使用文档](docs/usage/README.md) · [变更记录](CHANGELOG.md)
 
-已移除 AI 内容处理运行时、LLM 工具注册、Agent XML 即时推送、RSSHub Routes 知识库及对应命令、配置、API 和管理页面。普通 HTML 清洗、图片提取和格式化仍保留。
+本项目是 [AstrBot-Elementary-School/astrbot_plugin_rsshub](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub) 的修改版本，基于上游 **v2.1.4**、固定提交 [`a047f46e47cb2a0f7a795f30b9f82ae027005846`](https://github.com/AstrBot-Elementary-School/astrbot_plugin_rsshub/tree/a047f46e47cb2a0f7a795f30b9f82ae027005846)，继续按 **GNU AGPL v3** 开源。上游作者和来源说明见 [NOTICE](NOTICE.md)，完整许可证见 [LICENSE](LICENSE)。
+
+## 与原版的区别
+
+| 能力 | 上游基线 | RssHub lite |
+| --- | --- | --- |
+| 订阅、定时抓取、条件请求与去重 | 支持 | 保留 |
+| SQLite、推送历史、失败重试、会话队列 | 支持 | 保留并扩展显示配置迁移 |
+| 图片、音视频、文件、表格图片与缓存 | 支持 | 保留，发送方式明确区分直接/合并 |
+| Plugin Pages | 订阅、用户、Feed、历史、设置及 AI 页面 | 保留基础管理页面 |
+| AI 处理器、改写/过滤、LLM tools | 支持 | 移除 |
+| RSSHub Routes 知识库、Agent XML 推送 | 支持 | 移除 |
+| 立即查看订阅内容 | 原版测试入口 | 新增 `/feed <订阅ID> <N>`，最新条目组成一个合并转发包 |
+| 普通与手动推送设置 | 共用基础显示设置 | 分成两套独立继承配置 |
+| 插件身份与运行数据 | `astrbot_plugin_rsshub` | 独立的 `astrbot_plugin_rsshub_lite` |
+
+lite 表示功能范围收敛，不代表移除媒体依赖或改写为另一套数据库。普通 HTML 清洗和格式化继续执行，不调用模型。
 
 ## 安装
 
-需要 **AstrBot >=4.24.0**，使用符合该 AstrBot 版本要求的 Python。
-
-将发布 ZIP 上传到 AstrBot 插件管理，或把 ZIP 内的 `astrbot_plugin_rsshub` 目录放到：
+使用 AstrBot `>=4.24.0` 及宿主要求的 Python 环境。在 AstrBot 插件管理中通过仓库地址安装，或从 [Releases](https://github.com/Junnstoy/astrbot_plugin_rsshub_lite/releases) 下载插件 ZIP 后上传：
 
 ```text
-AstrBot/data/plugins/astrbot_plugin_rsshub/
+https://github.com/Junnstoy/astrbot_plugin_rsshub_lite
 ```
 
-插件保留原版标识和数据路径，**与原版二选一安装**。此本地裁剪版不配置上游自动更新地址，避免被原版覆盖。安装前先停止已有同名插件，保留需要的数据备份。
-
-如果宿主没有自动安装依赖，在 AstrBot 实际运行环境执行：
+也可以手动克隆：
 
 ```bash
-python -m pip install -r data/plugins/astrbot_plugin_rsshub/requirements.txt
+cd AstrBot/data/plugins
+git clone https://github.com/Junnstoy/astrbot_plugin_rsshub_lite.git
 ```
 
-随后重载插件，在配置中设置 `basic_config.rsshub_base_url`。沿用自己的 RSSHub 实例时可填 `http://rsshub.yuma.fun`；该地址来自旧插件，本次未验证服务可用性。
+插件目录应为 `AstrBot/data/plugins/astrbot_plugin_rsshub_lite/`。如需手动安装依赖，在 AstrBot 实际运行环境执行：
 
-## 重新订阅
+```bash
+python -m pip install -r data/plugins/astrbot_plugin_rsshub_lite/requirements.txt
+```
 
-不读取或迁移 `yuma_yys/rsshub.db`，也不自动导入上一版独立 Lite 数据。在目标会话中重新订阅即可，例如阴阳师官方网易大神账号：
+重载插件后设置 `basic_config.rsshub_base_url`，默认 `https://rsshub.app`，也可使用自己的 RSSHub 实例。RSSHub 路由是否可访问取决于实例、网络和对应站点的要求。
+
+原版与 lite 的部分聊天命令相同，切换使用时请停用另一份插件，避免重复响应或重复推送。lite 使用独立数据目录，不会自动读取原版或其他框架插件的数据库；可通过 TOML 导出/导入重新建立订阅。
+
+## 快速使用
+
+在希望接收推送的群聊或私聊中订阅完整 Feed 链接：
 
 ```text
-/sub /163/ds/5b00c224c7de46d98d33a6e0722ce28f
+/sub https://example.com/feed.xml
 /sub_list
-/feed 1 3
-/unpush 1
-/push 1
+/unpush 12
+/push 12
 ```
 
-ID `1` 请替换为列表方括号中的实际订阅 ID。也可以 `/sub https://你的实例/163/ds/用户ID`。新订阅默认启用；`/feed 1 3` 由管理员将最新 3 条按从新到旧排列，连同末尾汇总发送为一个合并转发包（当前仅 OneBot 支持）。它允许重复查看，不改变自动推送开关或去重水位。本版不提供之前独立实现的 `/动态`、`/rss_on` 或内置名称快捷源。
+请将示例 URL 换成实际 Feed，将 `12` 换成列表方括号内的订阅 ID。也支持 RSSHub 路由，例如 `/sub /bilibili/user/dynamic/123456`，其中账号 ID 需替换。新订阅默认启用；默认首次轮询只建立历史基线。
 
-`/push`、`/unpush` 持续启停自己在当前会话的订阅，支持 `1,3,4` 或 `all`。`/push_status` 只显示当前正在运行或排队的发送任务；`/push_cancel` 取消本次任务，后续更新仍会推送。管理员权限用于 `/feed`、测试推送、全局删除和全量导出。
-
-| 命令 | 用途 |
+| 命令 | 作用 |
 | --- | --- |
-| `/sub <URL或路由>` | 新增订阅，支持批量 |
-| `/unsub <ID或URL>` | 取消订阅 |
-| `/sub_list [page] [page_size]` | 当前会话自己的订阅；默认每页 5 条 |
-| `/push <ID[,ID...]\|all>`、`/unpush <ID[,ID...]\|all>` | 持续启用、停用自动推送 |
-| `/feed <订阅ID> <N>` | 管理员即时发送最新 N 条 |
-| `/push_status`、`/push_cancel [job_id\|feed_id\|all]` | 查看、取消本次发送任务 |
-| `/sub_profile`、`/sub_session` | 用户、订阅及会话配置 |
-| `/sub_export`、`/sub_import` | TOML 导出和导入 |
-| `/sub_test <ID或URL>` | 管理员测试推送最新一条 |
-| `/rsshelp` | 命令帮助图 |
+| `/sub <URL或路由> [更多目标...]` | 在当前会话新增订阅 |
+| `/sub_list [page] [page_size]` | 查看自己在当前会话的订阅，默认每页 5 条 |
+| `/push <ID[,ID...]\|all>` | 持续开启自动推送 |
+| `/unpush <ID[,ID...]\|all>` | 持续关闭自动推送，保留订阅 |
+| `/unsub <ID或URL...>` | 删除订阅 |
+| `/feed <订阅ID> <N>` | 管理员即时抓取最新 N 条，按新到旧合并转发 |
+| `/push_status` | 查看当前会话正在发送或排队的任务 |
+| `/push_cancel [job_id\|feed_id\|all]` | 取消本次任务，不关闭以后自动推送 |
+| `/sub_profile`、`/sub_session` | 修改订阅/用户设置，或设置当前会话的新订阅模板 |
+| `/sub_export`、`/sub_import` | TOML 导出与导入 |
+| `/sub_test <订阅ID或URL>` | 管理员诊断推送最新一条 |
+| `/rsshelp` | 查看命令帮助 |
 
-完整说明见 [命令](docs/usage/commands.md)、[配置](docs/usage/configuration.md)、[管理页面](docs/usage/plugin-pages.md)。
+`/push`、`/unpush` 操作自己的当前会话订阅；`all` 也仅指这个范围。`/feed` 当前依赖 OneBot 合并转发能力，可重复查看，不改变自动推送开关、去重水位或自动历史。订阅 ID、Feed ID 和 job ID 不相同，取消任务时请使用 `/push_status` 给出的标识。详见[命令说明](docs/usage/commands.md)。
 
-`/sub_profile set sub 1 style 2` 修改已有订阅，`/sub_profile set user style 2` 设置该用户的默认排版。发送选项按订阅 → 用户 → 全局默认逐字段继承，`-100` 恢复继承。`/sub_session set style 2` 仅作为当前会话**以后新建订阅**的模板，不修改已有订阅。实际抓取间隔请设订阅 `interval`；用户 `interval` 当前不参与调度。普通和 `/feed` 显示配置独立继承各自的全局默认值；管理页面保存显示设置后立即应用，监控间隔需重载插件。
+## 两套独立的推送设置
 
-普通发送模式为 `1` 直接发送、`2` 合并转发；`/feed` 固定合并转发。排版 `0` 自定义、`2` 原始顺序，两者均应用显示开关。所有显示开关统一 `0` 禁用、`1` 启用；用户/订阅可设 `-100` 继承。`feed_display_title` 等手动配置与普通 `display_title` 独立；`merge_media` 控制一条内容的文字和媒体是否合到同一消息或转发节点。RSS 标签来自源条目，不是订阅管理标签。详见[配置说明](docs/usage/configuration.md)。旧 `/sub_state`、`/activate_subs`、`/deactivate_subs`、`/sub_status`、`/sub_stop` 保留兼容入口。
+| 设置 | 普通订阅推送 | 手动 `/feed` |
+| --- | --- | --- |
+| 全局配置 | `global_config` | `feed_defaults` |
+| 发送方式 | `1` 直接发送、`2` 合并转发；默认直接 | 固定合并转发 |
+| 排版 | `0` 自定义、`2` 原始顺序；默认自定义 | 同左 |
+| 作者、来源、标题、媒体、合并媒体 | 默认启用 | 默认启用 |
+| RSS 标签 | 默认禁用 | 默认禁用 |
+| 用户/订阅字段 | `display_title`、`merge_media` 等 | `feed_display_title`、`feed_merge_media` 等 |
 
-## 数据与兼容
-
-默认数据库仍为：
+全局显示项使用勾选框；用户和订阅统一使用 `-100` 继承、`0` 禁用、`1` 启用。两套设置分别按 **订阅 → 用户 → 对应全局默认** 解析，不互相回退。例如：
 
 ```text
-AstrBot/data/plugin_data/astrbot_plugin_rsshub/rsshub.db
+/sub_profile set sub 12 display_title 0
+/sub_profile set sub 12 feed_display_title 1
+/sub_profile set sub 12 feed_style 2
+/feed 12 3
 ```
 
-保留原版 `rsshub_user`、`rsshub_feed`、`rsshub_sub`、`rsshub_push_history`、`rsshub_migration_record` 表及迁移代码。推送记录驱动持久化失败重试，运行中的会话 Task/队列仍为内存状态，语义同原版。
+这会关闭普通推送额外添加的标题，保留手动推送标题，并让手动推送使用原始正文图文顺序。标题开关不会删除正文自带的相同文字；RSS 标签来自源条目分类，与订阅管理标签 `tags` 不同。
 
-`handlers`、`handlers_mode`、`handler_trace` 等历史字段保留以维持结构兼容。旧值不会触发处理器，新的推送记录不产生 AI trace；配置入口拒绝处理器选项，导入旧 TOML 会忽略处理器字段并提示，导出不携带它们。保留 `raw_xml` 用于记录原始内容，它不代表 AI 功能。
+`merge_media` 控制单条内容的文字与媒体是否放在同一消息或转发节点中，与合并转发本身是两个设置。`/sub_session` 仅将模板复制给以后新建的订阅；实际抓取间隔使用订阅 `interval`，用户 `interval` 当前不参与调度。Plugin Pages 保存全局显示默认值后立即应用于后续消息，监控间隔仍需重载。完整配置见[配置说明](docs/usage/configuration.md)。
 
-原版数据库升级机制继续在插件启动时运行；新增的 `V3_display_profiles` 升级会补齐 `merge_media` 和独立 `feed_` 显示字段，并一次性转换旧选项值，继承值保留。当前全局配置和 TOML 导出为版本 3。这里的数据库升级不读取 NB2 或独立 Lite 数据；工作区旧 `yuma_yys` 目录保持原样，不进入安装包。详细转换见[配置兼容说明](docs/usage/configuration.md#旧配置兼容)。
+## 平台边界
 
-## 开发、验证与打包
+| 平台 | 直接发送 | 合并转发 / `/feed` |
+| --- | --- | --- |
+| OneBot / aiocqhttp | 支持，媒体受协议实现和平台限制 | 支持真正的合并转发 |
+| Telegram | 单图或单视频可配正文；多媒体同条需关闭合并媒体 | 当前不支持 |
+| QQ Official | 单图文可同条；多媒体或视频+正文需关闭合并媒体 | 当前不支持 |
+| Weixin OC | 图文或多媒体组合需关闭合并媒体逐项发送 | 当前不支持 |
+| 其他 AstrBot 平台 | 使用通用适配器，以宿主能力为准 | 默认不支持 |
+
+不支持的组合会明确报错，不会用普通多条消息冒充合并转发。媒体仍可能受大小、格式、平台风控与 Bot 适配器影响。自动化测试覆盖代码路径和浏览器界面，当前发布准备过程未完成真实 Bot 平台联测。更多细节见[平台规则](docs/project/platforms.md)。
+
+## 架构
+
+```mermaid
+flowchart TD
+    Chat[聊天命令] --> Commands[订阅与配置用例]
+    Pages[Plugin Pages] --> API[Web API]
+    API --> Commands
+    Commands --> Repo[Repository]
+    Repo --> DB[(SQLite)]
+    Scheduler[定时调度] --> Poll[FeedPollingService]
+    Poll --> Fetch[RSS / Atom / JSON Feed 抓取与解析]
+    Poll --> Dedup[条目指纹与增量识别]
+    Dedup --> Dispatch[NotificationDispatcher]
+    Chat --> Manual[PushFeedCommand /feed]
+    Manual --> Fetch
+    Manual --> Dispatch
+    Dispatch --> Options[普通 / 手动配置继承]
+    Options --> Format[EntryTextFormatter 图文排版]
+    Format --> Queue[SessionPushQueue]
+    Queue --> Sender[平台发送器]
+    Sender --> Bot[AstrBot 平台适配器]
+    Dispatch --> History[自动推送历史与失败重试]
+    History --> DB
+```
+
+`main.py` 接入宿主，`bootstrap.py` 装配生命周期；领域、应用、基础设施和接口分层保留。手动 `/feed` 只读抓取并整批入队，不写自动推送历史。架构细节见[项目文档](docs/project/architecture.md)。
+
+## 数据
+
+默认持久化目录：
+
+```text
+AstrBot/data/plugin_data/astrbot_plugin_rsshub_lite/
+├── rsshub.db      # 用户、订阅、Feed、历史与迁移记录
+├── cache/         # 媒体和渲染缓存
+└── exports/       # TOML 导出文件
+```
+
+运行中的任务/会话队列保存在内存，自动失败重试依赖数据库历史。启动配置由 AstrBot 插件设置管理，会话模板由 AstrBot 插件 KV 保存。数据库沿用上游表体系并通过版本迁移增加独立显示字段；旧处理器列仅作结构兼容，不执行 AI。配置和 TOML 当前使用格式版本 3，这与项目发布版本 `v0.1.0` 不同。
+
+## 开发与贡献
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -91,8 +164,10 @@ node --test tests/frontend/*.test.mjs
 python scripts/package.py
 ```
 
-Windows 如使用旧版 pip，请先设置 `PYTHONUTF8=1`，以正确读取带中文注释的依赖清单。测试使用 AstrBot API mock，不会发送真实平台消息；外网媒体集成测试默认跳过。生产环境仍需实际验证 RSSHub 实例和 Bot 平台连接。
+开发依赖不随运行依赖安装。测试环境、外网媒体测试和打包规则见[开发文档](docs/dev/README.md)。问题反馈与贡献请提交到[本项目仓库](https://github.com/Junnstoy/astrbot_plugin_rsshub_lite/issues)。
 
-安装包输出到 `dist/`。打包仅包含运行源码、前端、资源及许可文档，排除 `yuma_yys`、`.previous-lite`、`.upstream`、数据库、测试依赖和临时检查文件。
+## 许可与致谢
 
-[目标架构与裁剪边界](docs/project/architecture.md) · [来源与许可](NOTICE.md) · [GNU AGPL v3](LICENSE)
+RssHub lite 是对上游的修改版本，按 [GNU AGPL v3](LICENSE) 提供，保留来源、版权和许可声明；不代表上游作者的官方发行或背书。修改说明见 [NOTICE](NOTICE.md)。
+
+感谢上游作者 **FlanChanXwO** 与贡献者，以及上游致谢的 [RSS-to-Telegram-Bot](https://github.com/Rongronggg9/RSS-to-Telegram-Bot)、[AstrBot](https://github.com/AstrBotDevs/AstrBot) 和 [feedparser](https://github.com/kurtmckee/feedparser)。

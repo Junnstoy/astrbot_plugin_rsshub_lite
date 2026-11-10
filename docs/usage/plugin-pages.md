@@ -1,6 +1,6 @@
 # Plugin Pages 管理界面
 
-管理界面使用 AstrBot Plugin Pages，通过 AstrBot 面板访问。后端接口由 `WebApiHandler` 注册到 `/{plugin_name}/...` 路径下，当前为 `/astrbot_plugin_rsshub/...`。
+管理界面使用 AstrBot Plugin Pages，通过 AstrBot 面板访问。后端接口由 `WebApiHandler` 注册到 `/{plugin_name}/...` 路径下，当前为 `/astrbot_plugin_rsshub_lite/...`。
 
 ## 功能范围
 

@@ -1,6 +1,6 @@
-# RSSHub 精简版文档
+# RssHub lite 文档
 
-本版保留原版 AstrBot RSSHub 插件的基础订阅推送功能，移除处理器、LLM 工具和知识库能力。
+RssHub lite 保留原版 AstrBot RSSHub 插件的基础订阅推送功能，移除处理器、LLM 工具和知识库能力。安装入口见 [README](../README.md)，来源与许可见 [NOTICE](../NOTICE.md)。
 
 ## 使用
 

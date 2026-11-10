@@ -1,0 +1,102 @@
+name: Release RssHub lite
+
+on:
+  push:
+    branches: [main]
+    paths: [metadata.yaml]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rsshub-lite-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'Junnstoy/astrbot_plugin_rsshub_lite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate release identity
+        id: metadata
+        run: |
+          python - <<'PY'
+          import os
+          import runpy
+
+          package = runpy.run_path("scripts/package.py")
+          version = package["release_version"]()
+          tag = f"v{version}"
+          if os.environ["GITHUB_REF_TYPE"] == "tag" and os.environ["GITHUB_REF_NAME"] != tag:
+              raise SystemExit(f"Tag does not match metadata version {tag}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"tag={tag}\nversion={version}\n")
+          PY
+      - name: Check existing tag and release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+        run: |
+          tag_exists=false
+          publish=true
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            tag_exists=true
+            if [ "$GITHUB_REF_TYPE" != tag ]; then
+              publish=false
+            fi
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            publish=false
+          fi
+          echo "tag_exists=$tag_exists" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      - name: Package release source
+        if: steps.check.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.metadata.outputs.tag }}
+        run: python scripts/package.py --expected-tag "$TAG"
+      - name: Extract this version's changelog notes
+        if: steps.check.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.metadata.outputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["TAG"]
+          version = re.escape(tag.removeprefix("v"))
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8-sig")
+          heading = re.search(rf"^##[ \t]+\[?v?{version}\]?(?:[ \t][^\n]*)?$", text, re.MULTILINE)
+          if heading is None:
+              raise SystemExit(f"CHANGELOG.md has no entry for {tag}")
+          remainder = text[heading.end():]
+          next_heading = re.search(r"^##[ \t]", remainder, re.MULTILINE)
+          notes = remainder[:next_heading.start()] if next_heading else remainder
+          if not notes.strip():
+              raise SystemExit(f"CHANGELOG.md has no release notes for {tag}")
+          Path("dist/release-notes.md").write_text(notes.strip() + "\n", encoding="utf-8")
+          PY
+      - name: Publish new release and ZIP
+        if: steps.check.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.metadata.outputs.tag }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          TAG_EXISTS: ${{ steps.check.outputs.tag_exists }}
+        run: |
+          archive="dist/astrbot_plugin_rsshub_lite-$VERSION.zip"
+          if [ "$TAG_EXISTS" = true ]; then
+            gh release create "$TAG" "$archive" --repo "$GITHUB_REPOSITORY" --verify-tag --title "RssHub lite $TAG" --notes-file dist/release-notes.md
+          else
+            gh release create "$TAG" "$archive" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "RssHub lite $TAG" --notes-file dist/release-notes.md
+          fi

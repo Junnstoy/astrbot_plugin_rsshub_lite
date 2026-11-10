@@ -64,18 +64,17 @@ provider 会同时解析 sender strategy：
 
 ### 推送排版策略
 
-`style` 的枚举语义见 [`domain-model.md`](./domain-model.md#推送排版策略)。sender 层只负责按该策略选择平台发送结构。
+`style` 的枚举语义见 [`domain-model.md`](./domain-model.md#核心领域值速查)。formatter 决定自定义/原始顺序布局，adapter 根据独立的 `send_mode=1/2` 调用 `send_direct` / `send_merged`；`merge_media` 控制单条内容内部的消息或节点组合。完整契约见[平台规则](./platforms.md#平台行为矩阵)。
 
 ### QQ Official / Weixin OC 顺序发送
 
-`qq_official` 和 `weixin_oc` 不再统一走默认整条 chain 策略。它们在 sender adapter 内部按平台能力处理：
+当前直接发送按明确的 `merge_media` 设置处理：
 
-- QQ Official 单图 + 文本合成一条 `Image + Plain`。
-- QQ Official classic 中的视频/多媒体仍按媒体优先、文本最后拆发。
-- QQ Official original 按 layout fragments 尝试图片 + 后续文本合链，视频仍独立。
-- Weixin OC 始终逐条发送，original 只影响顺序，不合并图文。
+- 开启合并媒体时，QQ Official 支持单图 + 文本；多媒体或视频 + 正文返回不支持。
+- 开启合并媒体时，Weixin OC 对图文或多媒体组合返回不支持。
+- 关闭合并媒体时，两者按 formatter 的 layout 顺序逐项发送，并保留媒体候选降级。
 
-这样做是为了避开平台对多媒体图文链的吞文本问题，同时保留 QQ Official 单图图文链的可读性。
+平台不支持的组合会建议关闭合并媒体，不会静默更改用户选择的消息组合。
 
 如果中途某个媒体失败，sender 不会立刻停止，而是继续发送剩余媒体和最终文本。默认 partial 失败仍返回 `SendResult.ok=False`，`transient` / `needs_rebind` 聚合所有失败结果，`detail` 带有 `partial send` 语义。QQ Official 是例外：当失败媒体已经通过文件候选或原始链接文本完成降级送达时，返回 `ok=True`，避免轮询把已送达内容当失败反复补推。最终文本只追加失败媒体的原始链接，不追加成功媒体链接。
 
@@ -93,9 +92,9 @@ QQ Official sender 必须通过 AstrBot `MessageChain.use_markdown_` 控制 Mark
 
 Telegram 不新增插件侧开关。插件只优化 Plain 文本文案，AstrBot Telegram adapter 会对 Plain 文本走 MarkdownV2 转换；媒体 caption Markdown 不是当前插件承诺面。
 
-### OneBot 经典与原始顺序
+### OneBot 直接发送与合并转发
 
-OneBot auto/classic 使用合并转发，节点名优先使用 feed title。合并转发失败后会回退为纯文本 Nodes。OneBot original 不使用大合并转发包，而是按 layout fragments 逐条发送图文片段，适合 AI 日报这类多图长文。
+OneBot 的直接模式不生成 Nodes；合并模式生成真正的合并转发。`style=0/2` 均遵循这个选择。`merge_media=1` 将单条内容合在一条消息或一个 Node，`0` 按 layout 片段分成消息或 Node。手动 `/feed` 将所选条目和末尾汇总一起交给一个队列任务，发出一个 Nodes 包。
 
 original layout 中的 PDF / 文档链接保持 `file` 片段语义，由 sender 按文件或尾部组件发送，不参与图片合链，也不会被当作 image 组件处理。
 

@@ -22,7 +22,7 @@ class _AstrBotContextLike(Protocol):
 
 
 class HelpImageCommand:
-    """选择 RSSHub 帮助图。"""
+    """选择 RssHub lite 帮助图。"""
 
     def __init__(
         self,

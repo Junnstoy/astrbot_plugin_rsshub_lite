@@ -24,7 +24,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from PIL import Image, ImageDraw, ImageFont
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # .../astrbot_plugin_rsshub/
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent  # .../astrbot_plugin_rsshub_lite/
+PLUGIN_TITLE = "RssHub lite"
+SOURCE_URL = "https://github.com/Junnstoy/astrbot_plugin_rsshub_lite"
+LICENSE_LABEL = "AGPL-3.0"
 MAIN_PY = PLUGIN_ROOT / "main.py"
 
 # Template and resources under scripts/
@@ -197,8 +200,8 @@ def parse_main_commands(main_py: Path) -> list[CommandDoc]:
                 continue
 
             cmd = _extract_str_arg(dec)
-            if cmd in {"sub_state", "activate_subs", "deactivate_subs"}:
-                continue  # Legacy names remain accepted; keep the help focused.
+            if cmd == "sub_state":
+                continue  # This legacy state command remains accepted.
             aliases = _extract_aliases(dec)
             docs.append(
                 CommandDoc(
@@ -300,6 +303,9 @@ def render_html_to_temp(commands: list[CommandDoc], theme: str = "light") -> Pat
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         inline_css=css,
         rsslogo_svg=rsslogo_svg,
+        plugin_title=PLUGIN_TITLE,
+        source_url=SOURCE_URL,
+        license_label=LICENSE_LABEL,
     )
     with tempfile.NamedTemporaryFile(
         suffix=".html", delete=False, mode="w", encoding="utf-8"
@@ -437,7 +443,7 @@ def render_png_fallback(
             detail_lines = len(c.usage) + len(c.examples)
             h += 64 + (24 if c.display_aliases else 0) + detail_lines * 20
         row_heights.append(h + 18)
-    total_h = 150 + sum(row_heights) + 72
+    total_h = 214 + sum(row_heights) + 16 * len(grouped) + 70
     total_h = max(total_h, 760)
 
     im = Image.new("RGB", (width, total_h), bg_color)
@@ -459,22 +465,22 @@ def render_png_fallback(
         radius=4,
         fill=brand_bg,
     )
-    draw.text((78, 46), "RSSHub for AstrBot", font=font_brand, fill=accent)
-    draw.text((50, 45), "RSSHub 命令帮助", font=font_title, fill=title_color)
+    draw.text((78, 46), f"{PLUGIN_TITLE} for AstrBot", font=font_brand, fill=accent)
+    draw.text((50, 80), "命令帮助", font=font_title, fill=title_color)
     draw.text(
-        (50, 108),
+        (50, 142),
         "预生成静态帮助图，命令说明来自当前插件入口定义",
         font=font_text,
         fill=text_secondary,
     )
     draw.text(
-        (50, 138),
+        (50, 170),
         f"命令数：{len(commands)}",
         font=font_meta,
         fill=text_secondary,
     )
 
-    y = 182
+    y = 214
     box_w = width - padding * 2
     for idx, g in enumerate(grouped):
         x = padding
@@ -527,6 +533,12 @@ def render_png_fallback(
                 inner_y += 20
         y += h + 16
 
+    draw.text(
+        (50, y + 5),
+        f"源码：{SOURCE_URL} · {LICENSE_LABEL}",
+        font=font_meta,
+        fill=accent,
+    )
     output_png.parent.mkdir(parents=True, exist_ok=True)
     im.save(output_png, format="PNG")
 

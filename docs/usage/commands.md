@@ -153,7 +153,7 @@
 | `/sub_import [文件路径]` | `/导入订阅` | 从 TOML 导入；不带参数时进入 5 分钟文件上传等待。 |
 | `/rsshelp` | `/RSS帮助`、`/rss帮助` | 查看预生成命令帮助图。 |
 
-保留旧入口 `/sub_state <ID> on/off`、`/activate_subs [ID[,ID...]|all]`、`/deactivate_subs [ID[,ID...]|all]` 以及 `enable_subs`、`disable_subs` 别名。旧批量命令省略参数仍表示当前会话自己的全部订阅；新用法优先使用 `/push all`、`/unpush all`，这两个新命令必须明确传入 ID 或 `all`。
+保留 `/sub_state <ID> on/off` 兼容入口。持续启停统一使用 `/push`、`/unpush`；批量操作使用 `/push all`、`/unpush all`，必须明确传入 ID 或 `all`，无参数只显示用法。
 
 ## 原版配置兼容
 

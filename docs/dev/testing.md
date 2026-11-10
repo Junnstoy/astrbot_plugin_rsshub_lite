@@ -4,11 +4,11 @@
 
 | 场景 | 工作目录 | 命令 |
 | --- | --- | --- |
-| Python 格式化 | AstrBot 根目录 | `uv run ruff format data/plugins/astrbot_plugin_rsshub` |
-| Python lint | AstrBot 根目录 | `uv run ruff check data/plugins/astrbot_plugin_rsshub` |
-| 全量 pytest | AstrBot 根目录 | `uv run python -m pytest data/plugins/astrbot_plugin_rsshub/tests/ -v` |
-| 单元分类测试 | AstrBot 根目录 | `uv run python data/plugins/astrbot_plugin_rsshub/tests/run_tests.py --category unit` |
-| 集成分类测试 | AstrBot 根目录 | `uv run python data/plugins/astrbot_plugin_rsshub/tests/run_tests.py --category integration` |
+| Python 格式化 | AstrBot 根目录 | `uv run ruff format data/plugins/astrbot_plugin_rsshub_lite` |
+| Python lint | AstrBot 根目录 | `uv run ruff check data/plugins/astrbot_plugin_rsshub_lite` |
+| 全量 pytest | AstrBot 根目录 | `uv run python -m pytest data/plugins/astrbot_plugin_rsshub_lite/tests/ -v` |
+| 单元分类测试 | AstrBot 根目录 | `uv run python data/plugins/astrbot_plugin_rsshub_lite/tests/run_tests.py --category unit` |
+| 集成分类测试 | AstrBot 根目录 | `uv run python data/plugins/astrbot_plugin_rsshub_lite/tests/run_tests.py --category integration` |
 | shell 分类单测 | 插件目录 | `./tests/run_tests.sh --category unit` |
 | shell 分类集成 | 插件目录 | `./tests/run_tests.sh --category integration` |
 
@@ -19,13 +19,13 @@
 公网 m3u8 集成测试默认跳过。需要真实验证 Mux/hls.js 测试流时，先确认系统 FFmpeg 可用，再显式设置：
 
 ```bash
-RSSHUB_RUN_NETWORK_TESTS=1 uv run python -m pytest data/plugins/astrbot_plugin_rsshub/tests/integration/test_m3u8_download.py -v
+RSSHUB_RUN_NETWORK_TESTS=1 uv run python -m pytest data/plugins/astrbot_plugin_rsshub_lite/tests/integration/test_m3u8_download.py -v
 ```
 
 `requirements.txt` 只保留插件运行时依赖。pytest 与帮助图生成脚本依赖放在 `requirements-dev.txt`，从 AstrBot 根目录安装：
 
 ```bash
-uv pip install --python .venv/bin/python -r data/plugins/astrbot_plugin_rsshub/requirements-dev.txt
+uv pip install --python .venv/bin/python -r data/plugins/astrbot_plugin_rsshub_lite/requirements-dev.txt
 ```
 
 ## 分层验证矩阵

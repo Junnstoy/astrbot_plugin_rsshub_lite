@@ -11,7 +11,7 @@ from ...shared.profile_options import (
     validate_profile_value,
 )
 
-SESSION_DEFAULT_KV_PREFIX = "rsshub_session_defaults_"
+SESSION_DEFAULT_KV_PREFIX = "rsshub_lite_session_defaults_"
 SESSION_DEFAULT_KEYS = {
     "interval",
     "notify",

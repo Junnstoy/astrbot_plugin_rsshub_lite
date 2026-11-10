@@ -120,7 +120,7 @@ class OneBotMessageSender(DefaultMessageSender):
         owned_prepared = []
         try:
             nickname = (
-                context.channel.title if context and context.channel.title else "RSSHub"
+                context.channel.title if context and context.channel.title else "RssHub lite"
             )
             bot_self_id = self._resolve_bot_self_id(context)
             nodes = []
@@ -229,7 +229,7 @@ class OneBotMessageSender(DefaultMessageSender):
             bot_self_id = self._resolve_bot_self_id(context)
 
             nickname = (
-                context.channel.title if context and context.channel.title else "RSSHub"
+                context.channel.title if context and context.channel.title else "RssHub lite"
             )
 
             from astrbot.api.message_components import File, Image, Record, Video

@@ -11,8 +11,8 @@ import { feedPanelTemplate } from './overlays/feed-panel.js';
 import { dialogsTemplate } from './overlays/dialogs.js';
 
 const sidebarTemplate = String.raw`
-    <aside class="dashboard-sidebar" aria-label="RSSHub 管理导航">
-      <div class="dashboard-sidebar-title">RSSHub</div>
+    <aside class="dashboard-sidebar" aria-label="RssHub lite 管理导航">
+      <div class="dashboard-sidebar-title">RssHub lite</div>
       <nav class="dashboard-nav">
         <button class="dashboard-nav-item" :class="{ active: activeTab === 'overview' }" @click="openTab('overview')" type="button">概览</button>
         <button class="dashboard-nav-item" :class="{ active: activeTab === 'subs' }" @click="openTab('subs')" type="button">订阅列表</button>
@@ -27,6 +27,11 @@ const sidebarTemplate = String.raw`
 
 export const dashboardTemplate = [
   '<div class="container" v-scope>',
+  '  <div class="dashboard-project-links" aria-label="项目源码与许可">',
+  '    <a href="https://github.com/Junnstoy/astrbot_plugin_rsshub_lite" target="_blank" rel="noopener noreferrer">源码</a>',
+  '    <span aria-hidden="true">·</span>',
+  '    <a href="https://github.com/Junnstoy/astrbot_plugin_rsshub_lite/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPL-3.0</a>',
+  '  </div>',
   '  <div class="dashboard-shell">',
   sidebarTemplate,
   '    <main class="dashboard-main">',

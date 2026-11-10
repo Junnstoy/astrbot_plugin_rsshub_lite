@@ -50,7 +50,7 @@ class TelegraphClient:
         if not self.enabled:
             raise ValueError("missing telegraph access token")
 
-        page_title = str(title or "").strip() or "RSSHub"
+        page_title = str(title or "").strip() or "RssHub lite"
         html_content = self._build_html(
             title=page_title,
             content=content,

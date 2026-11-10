@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate rsshelp_light.png and rsshelp_dark.png for astrbot_plugin_rsshub.
+# Generate rsshelp_light.png and rsshelp_dark.png for astrbot_plugin_rsshub_lite.
 # Usage:
 #   ./scripts/gen_rsshelp.sh
 #   ./scripts/gen_rsshelp.sh --theme light

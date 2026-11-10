@@ -1,13 +1,13 @@
 # 项目概览
 
-`astrbot_plugin_rsshub` 精简版直接基于原版 AstrBot 插件裁剪，保留订阅、抓取、去重、定时推送、多平台消息发送和管理界面，不注册 LLM 工具、不执行内容处理器，也不访问 AstrBot 知识库。
+**RssHub lite**（`astrbot_plugin_rsshub_lite`）基于原版 AstrBot RSSHub 插件裁剪，保留订阅、抓取、去重、定时推送、多平台消息发送和管理界面，不注册 LLM 工具、不执行内容处理器，也不访问 AstrBot 知识库。源码与安装见 [README](../../README.md)，固定上游基线及许可见 [NOTICE](../../NOTICE.md)。
 
 ## 保留的基础能力
 
 - RSS、Atom、JSON Feed 抓取与条件请求，按订阅间隔调度。
 - 按用户和目标会话管理订阅，支持启停、批量操作、测试推送及 TOML 导入导出。
 - 用户/订阅默认配置和 `-100` 继承语义。
-- 文本与图片、音视频等媒体发送，沿用原版平台发送策略和缓存。
+- 文本与图片、音视频等媒体发送，保留缓存，按平台实际能力区分直接发送与合并转发。
 - 推送历史、失败重试、多 BOT 去重和发送队列。
 - Plugin Pages 中的订阅、用户、Feed、历史、默认设置及数据管理。
 
@@ -23,7 +23,7 @@
 
 数据库保留旧处理器字段的兼容结构，避免破坏已有订阅和历史数据；这些字段不参与推送执行。旧启动配置中的 `content_handlers`、`route_knowledge` 由配置自愈移除，旧会话默认值及 TOML 中的处理器选项被忽略，新导出不携带处理器配置。
 
-本版保留原版 `domain`、`application`、`infrastructure`、`interfaces` 分层及 `bootstrap.py` 启动装配方式，主要改动集中在移除能力的装配、接口和执行步骤。
+本版保留原版 `domain`、`application`、`infrastructure`、`interfaces` 分层及 `bootstrap.py` 启动装配方式，并扩展普通/手动显示字段、配置迁移和发送链路。插件使用独立命名空间和数据目录，不自动读取原版或其他框架插件的数据库。
 
 ## 维护参考
 

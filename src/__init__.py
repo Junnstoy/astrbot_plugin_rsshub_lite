@@ -1,4 +1,4 @@
-"""RSSHub 插件源包
+"""RssHub lite 插件源包
 
 提供 PLUGIN_DIR 常量供基础设施层引用。
 """

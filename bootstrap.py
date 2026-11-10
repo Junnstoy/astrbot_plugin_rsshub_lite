@@ -1,4 +1,4 @@
-"""RSSHub plugin bootstrap wiring.
+"""RssHub lite plugin bootstrap wiring.
 
 This module owns startup composition: config parsing, database setup,
 application dependency wiring, scheduler startup, and Web API registration.
@@ -135,7 +135,7 @@ async def create_plugin_runtime(
     push_job_queue: SessionPushQueue | None = None,
 ) -> PluginRuntime:
     """Initialize the plugin runtime and register Web API endpoints."""
-    logger.info("正在初始化 RSSHub 插件...")
+    logger.info("正在初始化 RssHub lite 插件...")
     runtime: PluginRuntime | None = None
     scheduler: RSSScheduler | None = None
     queue: SessionPushQueue | None = None
@@ -173,7 +173,7 @@ async def create_plugin_runtime(
             notification_dispatcher=notification_dispatcher,
             db_initialized=True,
         )
-        logger.info("RSSHub 插件初始化完成")
+        logger.info("RssHub lite 插件初始化完成")
         return runtime
     except Exception:
         if runtime is not None:

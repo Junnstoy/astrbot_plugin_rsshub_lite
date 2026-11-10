@@ -2,7 +2,7 @@
 
 ## 前置要求
 
-- Python 3.12+
+- 符合所用 AstrBot 版本要求的 Python 环境
 - AstrBot 主仓库本地开发环境
 - 推荐使用 `uv`
 
@@ -11,7 +11,7 @@
 插件通常位于：
 
 ```text
-AstrBot/data/plugins/astrbot_plugin_rsshub
+AstrBot/data/plugins/astrbot_plugin_rsshub_lite
 ```
 
 ## 常用目录
@@ -22,7 +22,7 @@ pages/       # Plugin Pages 前端
 src/         # DDD 主代码
 tests/       # 单元与集成测试
 docs/        # 项目、开发、使用文档
-skills/      # 给 AI agent 的 skill
+scripts/     # 维护、帮助图与打包脚本
 ```
 
 ## 运行与调试原则
@@ -31,17 +31,17 @@ skills/      # 给 AI agent 的 skill
 
 项目运行通常启动 AstrBot 主仓库顶层入口，而不是直接运行插件目录内的文件。
 
-本地工作区常见入口：
+在 AstrBot 主仓库根目录运行：
 
 ```bash
-python /Users/flanchan/Development/SourceCode/GithubProjects/AstrbotPluginDev/main.py
+python main.py
 ```
 
-如果工作区路径不同，就在 AstrBot 根目录运行对应的顶层 `main.py`。
+插件通过宿主发现和加载，无需单独启动插件目录内的 `main.py`。
 
 ### 数据目录
 
-不要把运行时数据写回插件仓库下的 `data/`。
+运行数据默认位于 `AstrBot/data/plugin_data/astrbot_plugin_rsshub_lite/`，与代码目录分离。不要把运行时数据写回插件仓库下的 `data/`。
 
 本插件统一通过路径工具访问：
 

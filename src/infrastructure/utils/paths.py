@@ -5,7 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-PLUGIN_NAME = "astrbot_plugin_rsshub"
+PLUGIN_NAME = "astrbot_plugin_rsshub_lite"
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
 

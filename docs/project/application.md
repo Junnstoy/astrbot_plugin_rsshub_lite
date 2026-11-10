@@ -23,7 +23,7 @@
 | `/push_cancel [job_id\|feed_id\|all]` | 支持精确取消和批量取消；无参数取消当前运行任务；`sub_stop` 保留别名。 | 不改订阅状态，不等同 `/unpush`；队列取消只能作用于已登记的任务。 |
 | `/rsshelp` | 发送预生成帮助图；按 AstrBot `timezone` 选择日间/夜间主题，读不到或时区非法时回退系统本地时间。 | 不把帮助图生成放到运行时热路径。 |
 
-旧 `sub_state`、`activate_subs`、`deactivate_subs` 兼容入口保留；旧批量命令空参数仍按当前会话 `all` 处理。新的帮助主入口推荐 `push`、`unpush`。命令用法见 [`commands.md`](../usage/commands.md)。
+保留 `sub_state` 兼容入口。持续推送统一使用 `push`、`unpush`，要求明确指定订阅 ID 或 `all`；无参数不修改数据。命令用法见 [`commands.md`](../usage/commands.md)。
 
 `PushFeedCommand` 使用 `fetch_feed_entries` 读端口、`EntryTextFormatter.format_layout` 和 `send_entries_to_session`，将 N 条及末尾汇总一次入队。手动请求不受订阅 `state` 或 `notify` 阻挡，不持久化推送历史，因此可重复发送、没有自动失败重试，也不会让后续自动推送误判已送达。无有效时间的条目放在有时间的条目后；等时和无时间条目保持源顺序。合并转发目前只在 OneBot 支持，其他平台返回不支持；整批取消仅作用于已入队任务，抓取和排版阶段尚无队列任务。
 

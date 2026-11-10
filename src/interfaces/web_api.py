@@ -1,7 +1,7 @@
-"""RSSHub Plugin Pages Web API
+"""RssHub lite Plugin Pages Web API
 
 提供基于 AstrBot Plugin Pages bridge 的 HTTP API 处理函数。
-所有端点注册为 /astrbot_plugin_rsshub/<endpoint>。
+所有端点注册为 /astrbot_plugin_rsshub_lite/<endpoint>。
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ from ..shared.profile_options import (
     PROFILE_OPTION_FIELDS as PUSH_SETTING_FIELDS,
 )
 
-PLUGIN_NAME = "astrbot_plugin_rsshub"
+PLUGIN_NAME = "astrbot_plugin_rsshub_lite"
 USER_ID_REQUIRED_ERROR = "user_id 不能为空"
 SUGGESTION_DEFAULT_LIMIT = 10
 SUGGESTION_MAX_LIMIT = 20

@@ -12,7 +12,7 @@ function requireBridge() {
 
 function buildDirectApiUrl(path, params = {}) {
   const normalizedPath = String(path || '').replace(/^\/+/, '');
-  const url = new URL(`/astrbot_plugin_rsshub/${normalizedPath}`, window.location.origin);
+  const url = new URL(`/astrbot_plugin_rsshub_lite/${normalizedPath}`, window.location.origin);
   for (const [key, value] of Object.entries(params || {})) {
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(value)) {

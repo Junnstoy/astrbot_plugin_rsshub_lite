@@ -1,4 +1,4 @@
-"""RSSHub 插件入口"""
+"""RssHub lite 插件入口"""
 
 from __future__ import annotations
 
@@ -57,15 +57,15 @@ class RSSHubPlugin(Star):
             self._push_job_queue = runtime.push_job_queue
             self._notification_dispatcher = runtime.notification_dispatcher
         except Exception as e:
-            logger.exception("RSSHub 插件初始化失败: %s", e)
+            logger.exception("RssHub lite 插件初始化失败: %s", e)
 
     async def terminate(self):
-        logger.info("正在停止 RSSHub 插件...")
+        logger.info("正在停止 RssHub lite 插件...")
         if self._runtime:
             await self._runtime.stop()
         else:
             await self._push_job_queue.stop_all()
-        logger.info("RSSHub 插件已停止")
+        logger.info("RssHub lite 插件已停止")
 
     # ── 命令方法（装饰器留在插件入口类，委托到纯函数） ───────────────────────
 
@@ -261,34 +261,6 @@ class RSSHubPlugin(Star):
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
-    @filter.command("activate_subs", alias={"enable_subs", "启用全部订阅"})
-    async def batch_activate(self, event: AstrMessageEvent, sub_ids: GreedyStr):
-        """旧批量启用命令兼容入口，推荐 /push all。
-
-        用法:
-        - /activate_subs
-        - /activate_subs 1,2,3
-        """
-        result = await _h.handle_batch_activate(
-            event, str(sub_ids) or "all", self._deps
-        )
-        if result.get("plain"):
-            yield event.plain_result(result["plain"])
-
-    @filter.command("deactivate_subs", alias={"disable_subs", "禁用全部订阅"})
-    async def batch_deactivate(self, event: AstrMessageEvent, sub_ids: GreedyStr):
-        """旧批量停用命令兼容入口，推荐 /unpush all。
-
-        用法:
-        - /deactivate_subs
-        - /deactivate_subs 1,2,3
-        """
-        result = await _h.handle_unpush(
-            event, str(sub_ids) or "all", self._deps, queue=self._push_job_queue
-        )
-        if result.get("plain"):
-            yield event.plain_result(result["plain"])
-
     @filter.command("unsub_all", alias={"取消全部订阅"})
     async def unsub_all(self, event: AstrMessageEvent, scope: str = ""):
         """取消全部订阅（当前会话或全局）。
@@ -394,7 +366,7 @@ class RSSHubPlugin(Star):
 
     @filter.command("rsshelp", alias={"RSS帮助", "rss帮助"})
     async def rsshelp(self, event: AstrMessageEvent):
-        """查看 RSSHub 命令帮助图片。"""
+        """查看 RssHub lite 命令帮助图片。"""
         help_image_path = HelpImageCommand().execute(self.context)
         if help_image_path.exists():
             yield event.chain_result([Image(file=str(help_image_path.resolve()))])

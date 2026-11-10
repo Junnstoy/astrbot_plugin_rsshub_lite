@@ -98,20 +98,6 @@ async def handle_unpush(
     return await _handle_push_state(event, args, deps, enabled=False, queue=queue)
 
 
-async def handle_batch_activate(
-    event: AstrMessageEvent, sub_ids: str, deps: dict
-) -> dict:
-    """Compatibility wrapper; explicit all is required for a session-wide change."""
-    return await handle_push(event, sub_ids, deps)
-
-
-async def handle_batch_deactivate(
-    event: AstrMessageEvent, sub_ids: str, deps: dict
-) -> dict:
-    """Compatibility wrapper for persistent disabling."""
-    return await handle_unpush(event, sub_ids, deps)
-
-
 async def handle_unsub_all(event: AstrMessageEvent, scope: str, deps: dict) -> dict:
     """取消全部订阅"""
     user_id = event.get_sender_id()

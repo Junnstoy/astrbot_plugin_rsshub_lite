@@ -1,4 +1,4 @@
-# Generate rsshelp_light.png and rsshelp_dark.png for astrbot_plugin_rsshub
+# Generate rsshelp_light.png and rsshelp_dark.png for astrbot_plugin_rsshub_lite
 # Usage:
 #   .\gen_rsshelp.ps1
 #   .\gen_rsshelp.ps1 --theme light

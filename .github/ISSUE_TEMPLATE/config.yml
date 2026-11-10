@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: RssHub lite 使用说明
+    url: https://github.com/Junnstoy/astrbot_plugin_rsshub_lite#readme
+    about: 使用前请先查阅当前插件的说明。

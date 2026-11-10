@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Media RSS Feed</title>
+    <link>https://example.com/media</link>
+    <description>Feed with media attachments</description>
+    <item>
+      <title>Article with Image</title>
+      <link>https://example.com/article-image</link>
+      <guid>https://example.com/article-image</guid>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+      <description>An article with an image</description>
+      <media:content url="https://example.com/image1.jpg" type="image/jpeg" medium="image">
+        <media:title>Test Image</media:title>
+        <media:thumbnail url="https://example.com/image1_thumb.jpg"/>
+      </media:content>
+    </item>
+    <item>
+      <title>Article with Video</title>
+      <link>https://example.com/article-video</link>
+      <guid>https://example.com/article-video</guid>
+      <pubDate>Sun, 31 Dec 2023 00:00:00 GMT</pubDate>
+      <description>An article with a video</description>
+      <media:content url="https://example.com/video1.mp4" type="video/mp4" medium="video" duration="120">
+        <media:title>Test Video</media:title>
+        <media:thumbnail url="https://example.com/video1_thumb.jpg"/>
+      </media:content>
+    </item>
+    <item>
+      <title>Article with Multiple Media</title>
+      <link>https://example.com/article-multi</link>
+      <guid>https://example.com/article-multi</guid>
+      <pubDate>Sat, 30 Dec 2023 00:00:00 GMT</pubDate>
+      <description>An article with multiple media files</description>
+      <media:group>
+        <media:content url="https://example.com/image2.jpg" type="image/jpeg" medium="image"/>
+        <media:content url="https://example.com/image3.jpg" type="image/jpeg" medium="image"/>
+        <media:content url="https://example.com/video2.mp4" type="video/mp4" medium="video"/>
+      </media:group>
+    </item>
+  </channel>
+</rss>
