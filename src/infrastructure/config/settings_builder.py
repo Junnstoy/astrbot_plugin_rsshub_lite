@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ...shared.constants import (
+    GIF_TRANSCODE_PROFILE_COMPATIBILITY,
+    GIF_TRANSCODE_PROFILE_OPTIONS,
     MEDIA_CACHE_TTL_SECONDS_DEFAULT,
     MEDIA_CACHE_TTL_SECONDS_MIN,
     ONEBOT_NAPCAT_STREAM_MODE_DEFAULT,
@@ -18,13 +20,14 @@ from ...shared.constants import (
     QQ_OFFICIAL_MEDIA_THRESHOLD_DEFAULT,
     SENDER_STRATEGY_ENABLED_PLATFORMS,
     TELEGRAM_PHOTO_MAX_BYTES,
-    GIF_TRANSCODE_PROFILE_COMPATIBILITY,
-    GIF_TRANSCODE_PROFILE_OPTIONS,
 )
 from .models import (
     ApplicationSettings,
     BasicSettings,
+    FeedDefaults,
+    FeedDefaultsConfig,
     FeedFetchSettings,
+    GlobalConfig,
     HttpSettings,
     MediaPlatformLimits,
     MediaSettings,
@@ -239,7 +242,11 @@ def _media_cache_enabled(media_cfg: Any) -> bool:
 def build_application_settings(config: Any) -> ApplicationSettings:
     basic_cfg = _get_value(config, "basic_config")
     http_cfg = _get_value(config, "http_config")
-    global_cfg = _get_value(config, "global_config")
+    global_source = _get_value(config, "global_config")
+    global_cfg = GlobalConfig.from_dict(_propagate_fields(global_source, GlobalConfig))
+    feed_cfg = FeedDefaultsConfig.from_dict(
+        _propagate_fields(_get_value(config, "feed_defaults"), FeedDefaultsConfig)
+    )
     media_cfg = _get_value(config, "media")
     sender_cfg = _get_value(config, "sender_strategies")
 
@@ -375,24 +382,8 @@ def build_application_settings(config: Any) -> ApplicationSettings:
             ),
             history_entry_limit=basic.history_entry_limit,
         ),
-        subscription_defaults=SubscriptionDefaults(
-            interval=int(_get_value(global_cfg, "interval", 10) or 10),
-            notify=bool(_get_value(global_cfg, "notify", True)),
-            send_mode=str(_get_value(global_cfg, "send_mode", "自动") or "自动"),
-            length_limit=int(_get_value(global_cfg, "length_limit", 0) or 0),
-            display_author=str(
-                _get_value(global_cfg, "display_author", "自动") or "自动"
-            ),
-            display_via=str(_get_value(global_cfg, "display_via", "自动") or "自动"),
-            display_title=str(
-                _get_value(global_cfg, "display_title", "自动") or "自动"
-            ),
-            display_entry_tags=bool(
-                _get_value(global_cfg, "display_entry_tags", False)
-            ),
-            style=str(_get_value(global_cfg, "style", "auto") or "auto"),
-            display_media=bool(_get_value(global_cfg, "display_media", True)),
-        ),
+        subscription_defaults=SubscriptionDefaults(**global_cfg.model_dump()),
+        feed_defaults=FeedDefaults(**feed_cfg.model_dump()),
         sender_strategies=_build_sender_strategy_settings(sender_cfg),
         http=http,
         media_platform_limits=media_platform_limits,

@@ -1,3 +1,5 @@
+import { pushFields } from '../js/push-options.js';
+
 // Dashboard store 的纯数据转换与表单工厂，避免页面模块重复维护同一套边界。
 export function normalizeUserState(state) {
   return Number(state) < 0 ? -1 : 1;
@@ -100,55 +102,42 @@ export function inheritedNumberToPayload(field) {
   return field?.mode === 'inherit' ? -100 : Number(field?.value ?? 0);
 }
 
+export function createInheritedPushForm(source = {}) {
+  const values = Object.fromEntries(pushFields.map((key) => [key, source[key] ?? -100]));
+  for (const key of ['length_limit', 'feed_length_limit']) {
+    values[`${key}_control`] = createInheritedNumberValue(values[key], 0);
+  }
+  return values;
+}
+
+export function inheritedPushToPayload(form) {
+  const values = Object.fromEntries(pushFields.map((key) => [key, Number(form[key] ?? -100)]));
+  for (const key of ['length_limit', 'feed_length_limit']) {
+    values[key] = inheritedNumberToPayload(form[`${key}_control`]);
+  }
+  return values;
+}
+
 export function createEmptyEditForm() {
-  return {
-    id: 0,
-    feed_id: 0,
-    feed_title: '',
-    feed_link: '',
-    user_id: '',
-    title: '',
-    tags: '',
-    target_session: '',
-    interval: 10,
-    notify: -100,
-    state_: true,
-    send_mode: -100,
-    length_limit: -100,
-    interval_control: createInheritedNumberValue(10, 10),
-    length_limit_control: createInheritedNumberValue(-100, 0),
-    display_author: -100,
-    display_via: -100,
-    display_title: -100,
-    display_entry_tags: -100,
-    style: -100,
-    display_media: -100,
-  };
+  return createEditFormFromSub({ id: 0, feed_id: 0, user_id: '', state: 1 });
 }
 
 export function createEditFormFromSub(sub) {
   return {
     id: sub.id,
     feed_id: sub.feed_id,
-    feed_title: sub.feed_title,
-    feed_link: sub.feed_link,
+    feed_title: sub.feed_title || '',
+    feed_link: sub.feed_link || '',
     user_id: sub.user_id,
     title: sub.title || '',
     tags: sub.tags || '',
     target_session: sub.target_session || '',
+    platform_name: sub.platform_name || '',
     interval: sub.interval ?? -100,
+    interval_control: createInheritedNumberValue(sub.interval ?? -100, 10),
     state_: sub.state === 1,
     notify: sub.notify ?? -100,
-    send_mode: sub.send_mode ?? -100,
-    length_limit: sub.length_limit ?? -100,
-    interval_control: createInheritedNumberValue(sub.interval ?? -100, 10),
-    length_limit_control: createInheritedNumberValue(sub.length_limit ?? -100, 0),
-    display_author: sub.display_author ?? -100,
-    display_via: sub.display_via ?? -100,
-    display_title: sub.display_title ?? -100,
-    display_entry_tags: sub.display_entry_tags ?? -100,
-    style: sub.style ?? -100,
-    display_media: sub.display_media ?? -100,
+    ...createInheritedPushForm(sub),
   };
 }
 
@@ -157,17 +146,9 @@ export function createEmptyUserEditForm() {
     user_id: '',
     state: 1,
     interval: -100,
-    notify: -100,
-    send_mode: -100,
-    length_limit: -100,
     interval_control: createInheritedNumberValue(-100, 10),
-    length_limit_control: createInheritedNumberValue(-100, 0),
-    display_author: -100,
-    display_via: -100,
-    display_title: -100,
-    display_entry_tags: -100,
-    style: -100,
-    display_media: -100,
+    notify: -100,
+    ...createInheritedPushForm(),
   };
 }
 

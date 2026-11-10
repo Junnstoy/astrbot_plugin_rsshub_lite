@@ -12,7 +12,7 @@ export const feedsActionsTemplate = [
       `<button class="btn" :class="feedEditMode ? 'btn-primary' : 'btn-secondary'" type="button" @click="toggleFeedEditMode()">{{ feedEditMode ? '完成编辑' : '批量操作' }}</button>`,
     ],
   }),
-  batchToolbarTemplate({ visibleExpr: 'feedEditMode && selectedFeedIds.length > 0', countExpr: 'selectedFeedIds.length', buttons: [
+  batchToolbarTemplate({ visibleExpr: "activeTab === 'feeds' && feedEditMode && selectedFeedIds.length > 0", countExpr: 'selectedFeedIds.length', buttons: [
     `<button class="btn btn-primary btn-small" :class="{ 'is-loading': isPending('feeds:refresh-batch') }" :disabled="isPending('feeds:refresh-batch')" @click="refreshSelectedFeeds()">批量刷新</button>`,
     `<button class="btn btn-danger btn-small" :class="{ 'is-loading': isPending('feeds:delete-batch') }" :disabled="isPending('feeds:delete-batch')" @click="deleteSelectedFeeds()">批量删除</button>`,
   ] }),

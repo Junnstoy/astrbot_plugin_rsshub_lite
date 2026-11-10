@@ -3,36 +3,43 @@
 本文记录 sender、平台适配、媒体下载与格式化相关稳定语义。修改 `src/infrastructure/messaging/`、`src/infrastructure/media/`、`src/infrastructure/pipeline/` 时优先参考本文。
 
 > [!NOTE]
-> 插件目标仍然是面向 AstrBot 全平台；但当前明确做过专门适配和回归覆盖的平台 sender 是 OneBot / aiocqhttp、QQ Official、Telegram、Weixin OC。其他平台会落到默认发送者，可能可用，但不属于当前明确测试覆盖点。
+> 普通直接发送通过 AstrBot 平台适配器投递；真正的合并转发及 `/feed` 当前仅支持 OneBot / aiocqhttp。回归测试使用 mock sender，不能代替真实平台联测。其他平台不支持的组合会明确报错，不静默改写用户的发送模式。
 
 ## 当前支持与测试覆盖
 
-| 平台 / sender | 当前状态 | 明确覆盖点 | 备注 |
+| 平台 / sender | 当前发送入口 | 直接发送的媒体合并边界 | 合并转发 |
 | --- | --- | --- | --- |
-| OneBot / aiocqhttp | 专门 sender，明确测试覆盖 | 合并转发、原始顺序、媒体预下载、NapCat 流式上传、失败 fallback | NapCat 支持流式上传大文件，默认 fallback 模式（失败后重试）。 |
-| QQ Official | 专门 sender，明确测试覆盖 | 单图文本合链、多媒体拆发、Markdown 开关边界、媒体失败降级送达语义 | Markdown 必须走 AstrBot `MessageChain.use_markdown_`，不得绕过 core 手写 botpy payload。 |
-| Telegram | 专门 sender，明确测试覆盖 | Telegraph 多图路由、大图片转文件、MarkdownV2 文本边界 | 不假设插件能控制媒体 caption Markdown。 |
-| Weixin OC | 专门 sender，明确测试覆盖 | 顺序发送、original style 顺序调整、不做图文合一 | 平台能力不适合强行合链。 |
-| 其他 AstrBot 平台 | 默认 sender，未列入当前专门回归覆盖 | 基础 `Plain` / 媒体组件发送 | 默认发送者不做强平台特化，因此可能可用；新增平台专属行为前需要补对应测试。 |
+| OneBot / aiocqhttp | `send_direct` / `send_merged` | 合并媒体使用同一消息链，禁用时按布局逐项发送 | 一个 `Nodes` 包；支持 NapCat 媒体上传策略。 |
+| QQ Official | `send_direct` | 可单图+正文；多媒体或视频+正文不能合为同一消息，需关闭合并媒体 | 明确返回不支持。 |
+| Telegram | `send_direct` | 可单图/单视频+caption；多媒体同条或不支持的媒体类型需关闭合并媒体 | 明确返回不支持。 |
+| Weixin OC | `send_direct` | 图文同条、多媒体同条不支持，需关闭合并媒体 | 明确返回不支持。 |
+| 其他 AstrBot 平台 | 默认 `send_direct` | 通用 MessageChain，最终以平台能力为准 | 默认 sender 明确返回不支持。 |
 
 ## 通用推送契约
 
 | 契约 | 当前语义 | 备注 |
 | --- | --- | --- |
-| 推送尾部 | 保持 `via <link> | <feed> (author: ...)` 兼容格式 | 具体文本构造见 [`formatting.md`](./formatting.md)。 |
+| 推送文字 | 作者是独立前置段，来源后缀为 `via <link> | <feed>` | 作者、来源、标题、标签分别受独立开关控制。 |
 | 成功媒体链接 | 成功推送不追加原始媒体链接 | 避免正常内容被大量 URL 污染。 |
 | 失败媒体链接 | 发送失败降级文本或失败历史中追加失败媒体原始链接 | 用于人工排障和后续重试。 |
-| `style` / `send_mode` | 排版语义见 [`formatting.md`](./formatting.md)；分发语义见 [`dispatch.md`](./dispatch.md) | 本章不重复维护枚举表。 |
+| `style` / `send_mode` / `merge_media` | 格式化确定内容顺序，发送模式决定直接或合并转发，媒体开关决定单条内容内部组合 | 不能用不同 style 暗中切换发送模式。 |
 
 ## 平台行为矩阵
 
-| 平台 / sender | 文本与媒体顺序 | 媒体策略 | Markdown / Telegraph | 关键风险 |
-| --- | --- | --- | --- | --- |
-| OneBot / aiocqhttp | auto/classic 使用合并转发；original 按 layout fragments 发送 | 媒体预下载后使用本地文件；支持 NapCat 流式上传（disabled/fallback/always）；合并转发失败后回退纯文本 Nodes | 合并转发节点在能确认 bot QQ 号时写入该 `uin`；未知时保留 AstrBot SDK 的默认 `uin="0"`，不伪造账号 | 合并转发失败、媒体发送失败、媒体顺序回退。 |
-| QQ Official | 单图 + 文本合成一条 `Image + Plain`；视频和多媒体仍拆发 | 图片/视频先按平台媒体组件发送，失败后按内置策略降级；降级成功视为已送达 | `qq_official_strategy.markdown_mode=auto|force|plain` 语义保留；当前主动推送链路暂时显式关闭 Markdown | Markdown 原文暴露、媒体 + markdown payload 畸形、平台 `invalid content` 仍需实测区分体积与内容风控。 |
-| Telegram | 文本和媒体按 Telegram sender 策略发送 | 本地图片超过内置 photo 阈值时按文件发送 | Telegraph 是 Telegram sender 级自动路由，不是 `send_mode`；Plain 文本可走 AstrBot MarkdownV2 | Bot API photo 大小拒绝、caption Markdown 不一致。 |
-| Weixin OC | 始终逐条发送；original 只影响顺序 | 不尝试图文合一 | 无 Telegraph / Markdown 承诺 | 强行图文合链会吞文本或失败。 |
-| 默认 sender | 尽量使用平台通用 MessageChain 组件 | 不做平台专属降级 | 依赖 AstrBot 平台默认能力 | 未明确覆盖的平台行为可能和专门 sender 不一致。 |
+应用层的 `InfrastructureMessageSenderAdapter` 显式选择 `send_direct` 或 `send_merged`。保留的旧 `send_to_user` 平台方法及 Telegraph 自动策略不是当前普通/手动推送的模式选择入口；不能据旧方法描述当前行为。
+
+| 场景 | 当前行为 |
+| --- | --- |
+| 普通 `send_mode=1` | 实际直接发送，不生成 OneBot Nodes。 |
+| 普通 `send_mode=2` | OneBot 发送真正合并转发；其他平台报 `merged_forward_not_supported`。 |
+| 手动 `/feed` | N 条和末尾汇总合为同一批次、同一个 Nodes 包；成功后不在包外重复摘要。 |
+| `merge_media=1` | 单个 entry 的布局组件合到同一消息或 Node；跨平台组合超出上述能力时明确报错。 |
+| `merge_media=0` | 文本片段和媒体逐项发送，或各自建 Node；保留布局顺序和已有媒体候选 fallback。 |
+| OneBot 合并转发失败 | 保留失败，NapCat 配置允许时可尝试媒体流式上传后重发同一 Nodes；不把失败的合并转发降级成普通多条消息。 |
+
+`style=0` 的自定义布局由 formatter 生成文字后附媒体；`style=2` 保留正文可解析图文顺序，两种样式都应用同一套显示开关。Telegram 单媒体 caption 会把文字片段按原顺序合成说明文本。合并转发节点只在确认 bot QQ 号时设置 `uin`，未知时保留 AstrBot SDK 默认值，不伪造账号。
+
+不支持合并转发或媒体组合属于明确的配置/能力错误，不进入自动重试。普通网络或媒体失败仍沿原失败记录与候选处理链路。QQ Official 继续使用宿主 Markdown 策略边界，当前主动推送不强制 Markdown；不直接构造 botpy payload。
 
 ## 媒体上限参考
 

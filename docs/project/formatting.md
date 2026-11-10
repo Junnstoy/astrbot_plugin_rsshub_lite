@@ -5,9 +5,9 @@
 当前格式化链可以分成两个层面：
 
 1. `EntryTextFormatter`
-   - 负责把 entry 整理成最终文本
+   - `format_entry` 整理纯文本，`format_layout` 生成带显示开关的最终文字/媒体布局
 2. `MessageComponentSorter`
-   - 负责把媒体、文本、失败链接整理成平台发送前的统一组件顺序
+   - 提供无布局时的兼容排序和媒体候选；当前发送器优先保留 formatter 给出的布局
 
 ## 为什么拆成两层
 
@@ -16,7 +16,7 @@
 - 文本格式化关心标题、正文、via、作者、标签
 - 组件排序关心媒体与文本在不同平台上的发送顺序
 
-把它们拆开后，改 onebot 排序不会碰正文格式，改 via 逻辑也不会影响 sender 组件顺序。
+布局与平台组件分开后，显示开关统一由 formatter 处理，平台只决定可发送的媒体类型和消息组合方式。
 
 ## EntryTextFormatter 算法
 
@@ -26,14 +26,10 @@
    - 走 `HTMLParser`
    - 提取纯文本
    - 去掉 `[视频]` / `[音频]` 占位
-2. 去重标题
-   - 如果 body 和 title 本质相同，就清空 body
-3. 应用长度限制
-4. 按配置决定是否显示：
-   - title
-   - tags
-   - via
-   - author
+2. 仅在标题启用时，去掉正文开头与条目标题完全重复的部分；标题禁用时保留完整正文。
+3. 应用正文长度限制，不计作者、标题、标签与来源。
+4. 按独立 bool 开关组合作者、标题、正文、RSS 标签和来源。
+5. `format_layout` 自定义模式将上述文本放前、媒体放后；原始顺序模式在作者/标题和标签/来源之间保留正文图文片段。
 
 ## 为什么 via 要单独处理
 
@@ -42,14 +38,7 @@
 - 条目链接
 - feed 来源
 
-同时还要兼容：
-
-- 完全禁用 via
-- 仅链接
-- source 缺失
-- author 追加但不出现 `via  |` 这种坏尾巴
-
-所以它被单独抽成 `_build_via_suffix()`，而不是内联拼字符串。
+来源启用时输出可用的文章链接和 Feed 名称/链接，关闭时移除整个来源段。作者现在是独立的前置段，来源开关不会连带隐藏作者。源字段缺失时只使用实际存在的数据，不生成空分隔符或占位作者。当前配置不再提供「仅链接来源」选项。
 
 ## MessageComponentSorter 算法
 
@@ -60,23 +49,24 @@
 - `tail`
 - `failed_url`
 
-核心规则：
+无 layout 的兼容排序规则：
 
 - 默认媒体优先于文本
 - onebot-like 平台把 `tail` 里的音频/文件也尽量放在媒体区
 - 文本主体统一放后面
 
-注意：`MessageComponentSorter` 只负责排序，不负责决定“一条消息拆成几次发送”。平台是否需要拆批发送属于 sender adapter 的职责。
+当前主链路使用 `format_layout`，sender 的 `_configured_components` 优先保留该布局，仅补充 enclosure 媒体和失败链接；重试等没有 layout 的请求使用最终文本加媒体。`merge_media` 决定是否拆分，不由 `style` 或 sorter 隐式修改。
 
 ## 推送排版策略
 
 `style` 字段现在表示推送排版策略：
 
-- `0=auto`：自动选择平台经典发送方式，例如 OneBot 使用合并转发。
-- `1=RSSRT`：保留给 RSSRT 排版策略。
-- `2=original`：优先使用 HTML/XML 解析树生成的 layout fragments，尽量按原始顺序发送图文片段；文本片段仍遵守最终生效的 `length_limit`，媒体、文件片段只参与顺序发送，不因文本裁剪被丢弃。
+- `0` 自定义：作者、标题、清洗后的正文、RSS 标签、来源组成文字部分，媒体随后。
+- `2` 原始顺序：正文内部使用 HTML/XML 解析产生的 layout fragments，作者/标题在前、标签/来源在后；正文文本片段累计遵守 `length_limit`。
 
-旧 `flowerss` 语义已经废弃，迁移时会重置为 classic。
+两种排版均应用所有显示开关。显示媒体关闭会移除媒体片段，标题关闭不删除正文原有文字。作者和来源独立。普通字段与 `feed_` 字段分别继承各自全局默认值，`feed_display_title` 不回退到普通 `display_title`。
+
+`send_mode=1/2` 独立决定直接消息/合并转发；`merge_media=1` 将单条内容合成一个消息或转发节点，`0` 按片段拆分。RSSRT、自动发送、仅链接模式退出当前配置面，旧值按版本 3 规则一次转换。
 
 ## 表格图片语义
 
@@ -91,17 +81,7 @@ HTML `<table>` 解析时会先尝试走轻量转图链路：
 
 表格图片按规范化表格模型计算 sha256。启用 `media.cache_enabled` 时保存为 `cache/table_images/table_<hash>.png`，旁置 `.meta` 记录 `expire_ts`；命中会刷新 TTL，旧版无 meta 的 PNG 会先视为可复用并补写 meta，过期后重渲染。每次启用缓存渲染都会顺带清理已过期的其他表格图和明显陈旧的无 meta 孤儿 PNG，但会跳过当前 digest，避免误删刚被访问的旧版 PNG。同一表格重复推送会复用同一张图，缓存写入使用唯一临时文件避免并发同 hash 互相覆盖。
 
-关闭 `media.cache_enabled` 时，表格图渲染为系统临时目录下的 `rsshub_table_*.png`，不写 digest cache 或 meta。sender 发送前会把 layout 上的一次性本地图复制成当次发送专用临时图，并通过 `PreparedMedia.owned_paths` 清理副本；共享 layout 原始临时图由 dispatcher、agent XML 推送或文本清洗调用方清理。外部传入的非 cache `local_path` 不会被自动接管。空表格、坏 HTML 或渲染异常会保留原有 `A | B | C` 文本 fallback，不阻断 RSS 推送。
-
-## 为什么 OneBot 维持“媒体在前，文本在后”
-
-这是当前实际平台兼容性做出来的结果，不是抽象美感选择：
-
-- OneBot 合并转发对媒体节点放前面更稳定
-- 文本尾巴与 via 放后面更符合当前实际发送表现
-- 这也和插件现有历史表现保持一致
-
-因此项目明确把它作为兼容规则保留下来。
+关闭 `media.cache_enabled` 时，表格图渲染为系统临时目录下的 `rsshub_table_*.png`，不写 digest cache 或 meta。sender 发送前会把 layout 上的一次性本地图复制成当次发送专用临时图，并通过 `PreparedMedia.owned_paths` 清理副本；共享 layout 原始临时图由 dispatcher、手动推送或文本清洗调用方清理。外部传入的非 cache `local_path` 不会被自动接管。空表格、坏 HTML 或渲染异常会保留原有 `A | B | C` 文本 fallback，不阻断 RSS 推送。
 
 ## 失败链接追加策略
 
@@ -112,7 +92,7 @@ HTML `<table>` 解析时会先尝试走轻量转图链路：
 
 正常成功态不追加，避免正文被原始媒体链接污染。
 
-`qq_official` / `weixin_oc` 是平台特例：QQ Official 单图可与文本合发，视频和多媒体场景仍由 sender 拆批；Weixin OC 不支持图文同发，只能逐条发送。OneBot auto/classic 合并转发失败后会回退为纯文本 Nodes，original 排版不使用大合并转发包。
+平台不支持同条合并的媒体组合会明确提示关闭合并媒体；不支持合并转发会明确返回错误。不会静默改变用户选择的直接/合并模式。各平台边界见[平台规则](./platforms.md)。
 
 ## 标题去重边界
 

@@ -1,3 +1,4 @@
+import { createDisplayDefaults } from '../js/push-options.js';
 import { createAutocompleteState } from '../js/autocomplete.js';
 import {
   createDefaultDataOverview,
@@ -71,15 +72,10 @@ export function createDashboardInitialState() {
     subscriptionDefaults: {
       interval: 10,
       notify: true,
-      send_mode: '自动',
-      length_limit: 0,
-      display_author: '自动',
-      display_via: '自动',
-      display_title: '自动',
-      display_entry_tags: false,
-      style: 'auto',
-      display_media: true,
+      send_mode: 1,
+      ...createDisplayDefaults(),
     },
+    feedDefaults: createDisplayDefaults(),
     historyRetentionDays: 30,
     pushHistory: [],
     pushHistoryLoading: false,

@@ -10,6 +10,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from ...shared.profile_options import (
+    migrate_legacy_profile_value,
+    validate_profile_value,
+)
 from ..dto.subscription_export_record import (
     SUBSCRIPTION_EXPORT_INT_FIELDS,
     SUBSCRIPTION_EXPORT_STRING_FIELDS,
@@ -17,7 +21,7 @@ from ..dto.subscription_export_record import (
 )
 
 EXPORT_FORMAT = "astrbot-rsshub-subscriptions"
-EXPORT_VERSION = 2
+EXPORT_VERSION = 3
 
 # 导出时排除的字段（这些是运行时计算的）
 EXPORT_EXCLUDED_FIELDS = {"id", "sid", "sub_id"}
@@ -184,11 +188,12 @@ def parse_subscriptions_toml(content: str) -> SubscriptionImportPayload:
         )
 
     version = data.get("version")
-    if version is not None and version not in {1, EXPORT_VERSION}:
+    if version is not None and version not in {1, 2, EXPORT_VERSION}:
         payload.warnings.append(
             f"Unexpected version={version!r}; parser will try best-effort import"
         )
     legacy_send_mode = version in {None, 1}
+    legacy_profile = version in {None, 1, 2}
 
     subs = data.get("subscriptions")
     if not isinstance(subs, list):
@@ -265,6 +270,14 @@ def parse_subscriptions_toml(content: str) -> SubscriptionImportPayload:
                 has_error = True
                 continue
             if parsed is not None:
+                if legacy_profile:
+                    parsed = migrate_legacy_profile_value(key, parsed)
+                try:
+                    parsed = validate_profile_value(key, parsed)
+                except ValueError as exc:
+                    payload.errors.append(f"subscriptions[{i}].{key}: {exc}")
+                    has_error = True
+                    continue
                 record.options[key] = parsed
 
         if has_error:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .legacy_migration import record_config_heal
+from .legacy_migration import migrate_display_config, record_config_heal
 
 _SCHEMA_DEFAULTS: dict[str, Any] = {
     "bool": False,
@@ -234,6 +234,10 @@ def _normalize_schema_value(
             return _schema_default(meta)
         if coerced != value:
             record_config_heal(changes, path, "coerced int")
+        options = meta.get("options")
+        if isinstance(options, list) and coerced not in options:
+            record_config_heal(changes, path, "reset invalid option")
+            return _schema_default(meta)
         return _clamp_slider_value(coerced, meta, path, changes)
 
     if meta_type == "float":
@@ -275,8 +279,13 @@ def heal_astrbot_plugin_config(
         return dict(raw_config or {}), []
 
     changes: list[str] = []
+    source = dict(raw_config)
+    if "config_version" in schema:
+        source = migrate_display_config(source)
+        if source != raw_config:
+            record_config_heal(changes, "config_version", "migrated display options")
     normalized = _normalize_schema_value(
-        dict(raw_config), {"type": "object", "items": schema}, "", changes
+        source, {"type": "object", "items": schema}, "", changes
     )
     if normalized == raw_config:
         changes.clear()

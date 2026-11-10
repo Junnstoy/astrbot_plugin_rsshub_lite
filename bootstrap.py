@@ -400,6 +400,7 @@ async def _build_dependencies(
         sender_provider=sender_provider,
         push_job_queue=push_job_queue,
         subscription_defaults=app_settings.subscription_defaults,
+        feed_defaults=app_settings.feed_defaults,
         basic_settings=app_settings.basic,
     )
     polling_service = FeedPollingService(
@@ -447,6 +448,7 @@ async def _build_dependencies(
             feed_repo=feed_repo,
             polling_service=polling_service,
             notification_dispatcher=notification_dispatcher,
+            user_repo=user_repo,
         ),
         push_feed_cmd=PushFeedCommand(
             subscription_repo=sub_repo,

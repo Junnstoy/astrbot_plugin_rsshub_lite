@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from ...domain.repositories.user_repository import UserRepository
+from ...shared.profile_options import NEW_PROFILE_FIELDS
 from ..dto.result_dto import CommandResult
 
 
@@ -75,6 +76,7 @@ class GetUserSettingsCommand:
             "style": user.style,
             "display_media": user.display_media,
             "default_target_session": user.default_target_session,
+            **{key: getattr(user, key, -100) for key in NEW_PROFILE_FIELDS},
         }
 
         lines = ["用户配置:"]

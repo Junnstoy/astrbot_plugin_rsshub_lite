@@ -30,6 +30,7 @@ from ...infrastructure.pipeline import (
     EntryTextFormatter,
 )
 from ...infrastructure.pipeline.entry_formatter import normalize_plain_text
+from ...infrastructure.rendering import cleanup_ephemeral_generated_media_paths
 from ...infrastructure.utils import get_logger
 from ..ports import FeedFetcherFactory, FeedParser, MediaFingerprintService
 from .entry_content import EntryContentContext
@@ -656,79 +657,87 @@ class FeedPollingService:
                 or title
             )
             parsed = await HTMLParser(raw_content, feed_link=feed.link).parse()
-            plain_content = await _entry_text_formatter.clean_text(raw_content)
-            if any(isinstance(m, (AudioContent, VideoContent)) for m in parsed.media):
-                plain_content = self._remove_media_placeholders(plain_content)
-            media_items = self._media_items_from_parsed(parsed.media)
-            media_urls = [url for _, url in media_items]
-            enclosure_urls = [
-                str(self._entry_value(enclosure, "url"))
-                for enclosure in (self._entry_value(entry, "enclosures", []) or [])
-                if self._entry_value(enclosure, "url")
-            ]
-            media_urls.extend(enclosure_urls)
-            media_urls = list(dict.fromkeys(media_urls))
-            tags = tuple(self._entry_value(entry, "tags", []) or ())
-            content = await self._format_dispatch_content_async(
-                title=title,
-                body=plain_content,
-                link=link,
-                feed_title=feed.title,
-                feed_link=feed.link,
-                author=author,
-                tags=tags,
-            )
-            if self._media_fingerprint_service is not None and media_urls:
-                try:
-                    media_hashes = (
-                        await self._media_fingerprint_service.fingerprint_urls(
-                            media_urls
-                        )
-                    )
-                    if media_hashes:
-                        logger.debug(
-                            "poll_feed: media fingerprints calculated for feed=%s, count=%s",
-                            feed.id,
-                            len(media_hashes),
-                        )
-                except Exception as ex:
-                    logger.debug(
-                        "poll_feed: media fingerprint skipped: feed=%s, err=%s",
-                        feed.id,
-                        ex,
-                    )
-            stats = await self._notification_dispatcher.dispatch_to_feed_subscribers(
-                feed_id=feed.id,
-                content=content,
-                entry_title=title,
-                entry_link=link,
-                feed_title=feed.title,
-                feed_link=feed.link,
-                media_urls=media_urls,
-                media_items=media_items,
-                entry_guid=guid,
-                subscription_ids=subscription_ids,
-                raw_entry=EntryContentContext(
+            try:
+                plain_content = await _entry_text_formatter.clean_text(raw_content)
+                if any(
+                    isinstance(m, (AudioContent, VideoContent)) for m in parsed.media
+                ):
+                    plain_content = self._remove_media_placeholders(plain_content)
+                media_items = self._media_items_from_parsed(parsed.media)
+                media_urls = [url for _, url in media_items]
+                enclosure_urls = [
+                    str(self._entry_value(enclosure, "url"))
+                    for enclosure in (self._entry_value(entry, "enclosures", []) or [])
+                    if self._entry_value(enclosure, "url")
+                ]
+                media_urls.extend(enclosure_urls)
+                media_urls = list(dict.fromkeys(media_urls))
+                tags = tuple(self._entry_value(entry, "tags", []) or ())
+                content = await self._format_dispatch_content_async(
                     title=title,
-                    summary=plain_content,
-                    content=plain_content,
+                    body=plain_content,
                     link=link,
-                    author=author,
                     feed_title=feed.title,
                     feed_link=feed.link,
-                    raw_xml=str(getattr(entry, "raw_xml", "") or "").strip(),
-                    media_urls=tuple(media_urls),
-                    media_items=tuple(media_items),
-                    layout=tuple(parsed.layout),
-                ),
-            )
-            dispatched += (
-                stats.get("success", 0)
-                + stats.get("failed", 0)
-                + stats.get("pending", 0)
-            )
-            if self._dispatch_stats_acknowledged(stats):
-                acknowledged_entries.append(entry)
+                    author=author,
+                    tags=tags,
+                )
+                if self._media_fingerprint_service is not None and media_urls:
+                    try:
+                        media_hashes = (
+                            await self._media_fingerprint_service.fingerprint_urls(
+                                media_urls
+                            )
+                        )
+                        if media_hashes:
+                            logger.debug(
+                                "poll_feed: media fingerprints calculated for feed=%s, count=%s",
+                                feed.id,
+                                len(media_hashes),
+                            )
+                    except Exception as ex:
+                        logger.debug(
+                            "poll_feed: media fingerprint skipped: feed=%s, err=%s",
+                            feed.id,
+                            ex,
+                        )
+                stats = (
+                    await self._notification_dispatcher.dispatch_to_feed_subscribers(
+                        feed_id=feed.id,
+                        content=content,
+                        entry_title=title,
+                        entry_link=link,
+                        feed_title=feed.title,
+                        feed_link=feed.link,
+                        media_urls=media_urls,
+                        media_items=media_items,
+                        entry_guid=guid,
+                        subscription_ids=subscription_ids,
+                        raw_entry=EntryContentContext(
+                            title=title,
+                            summary=plain_content,
+                            content=plain_content,
+                            link=link,
+                            author=author,
+                            feed_title=feed.title,
+                            feed_link=feed.link,
+                            raw_xml=str(getattr(entry, "raw_xml", "") or "").strip(),
+                            media_urls=tuple(media_urls),
+                            media_items=tuple(media_items),
+                            layout=tuple(parsed.layout),
+                            tags=tuple(getattr(entry, "tags", ()) or ()),
+                        ),
+                    )
+                )
+                dispatched += (
+                    stats.get("success", 0)
+                    + stats.get("failed", 0)
+                    + stats.get("pending", 0)
+                )
+                if self._dispatch_stats_acknowledged(stats):
+                    acknowledged_entries.append(entry)
+            finally:
+                cleanup_ephemeral_generated_media_paths(parsed.layout)
         return _DispatchEntriesResult(
             dispatched=dispatched,
             acknowledged_entries=acknowledged_entries,

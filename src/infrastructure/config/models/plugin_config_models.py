@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -11,6 +11,11 @@ from ....shared.constants import (
     GIF_TRANSCODE_PROFILE_OPTIONS,
     MEDIA_CACHE_TTL_SECONDS_DEFAULT,
     MEDIA_CACHE_TTL_SECONDS_MIN,
+)
+from ..legacy_migration import (
+    CONFIG_VERSION,
+    migrate_display_config,
+    normalize_config_choice,
 )
 from .sender_strategy_models import SenderStrategiesConfig
 
@@ -69,115 +74,67 @@ class BasicConfig(BaseModel):
         return cls.model_validate({**cls().model_dump(), **(data or {})})
 
 
-class GlobalConfig(BaseModel):
-    """全局默认配置（订阅级，可继承）"""
+class FeedDefaultsConfig(BaseModel):
+    """Independent global defaults for explicit /feed sends."""
 
-    interval: int = Field(default=10, description="监控间隔（分钟）")
-    notify: bool = Field(default=True, description="是否通知")
-    send_mode: str = Field(default="自动", description="发送模式")
-    length_limit: int = Field(default=0, description="长度限制")
-    display_author: str = Field(default="自动", description="显示作者")
-    display_via: str = Field(default="自动", description="显示来源")
-    display_title: str = Field(default="自动", description="显示标题")
-    display_entry_tags: bool = Field(default=False, description="显示标签")
-    style: str = Field(default="auto", description="推送排版策略")
-    display_media: bool = Field(default=True, description="显示媒体")
+    length_limit: int = Field(default=0, ge=0, le=10000)
+    display_author: bool = True
+    display_via: bool = True
+    display_title: bool = True
+    display_entry_tags: bool = False
+    display_media: bool = True
+    style: Literal[0, 2] = 0
+    merge_media: bool = True
 
-    _SEND_MODE_MAP: ClassVar[dict[str, int]] = {"仅链接": -1, "自动": 0, "直接发送": 1}
-    _DISPLAY_AUTHOR_MAP: ClassVar[dict[str, int]] = {"禁用": -1, "自动": 0, "强制": 1}
-    _DISPLAY_VIA_MAP: ClassVar[dict[str, int]] = {
-        "完全禁用": -2,
-        "仅链接": -1,
-        "自动": 0,
-        "强制": 1,
-    }
-    _DISPLAY_TITLE_MAP: ClassVar[dict[str, int]] = {
-        "禁用": -1,
-        "自动": 0,
-        "强制": 1,
-    }
-    _STYLE_MAP: ClassVar[dict[str, int]] = {
-        "auto": 0,
-        "classic": 0,
-        "RSStT": 0,
-        "rssrt": 1,
-        "RSSRT": 1,
-        "flowerss": 0,
-        "original": 2,
-    }
+    @field_validator(
+        "display_author",
+        "display_via",
+        "display_title",
+        "display_entry_tags",
+        "display_media",
+        "merge_media",
+        "style",
+        mode="before",
+    )
+    @classmethod
+    def normalize_display_choice(cls, value: Any, info) -> Any:
+        return normalize_config_choice(info.field_name, value)
 
-    _SEND_MODE_RMAP: ClassVar[dict[int, str]] = {-1: "仅链接", 0: "自动", 1: "直接发送"}
-    _DISPLAY_AUTHOR_RMAP: ClassVar[dict[int, str]] = {
-        -1: "禁用",
-        0: "自动",
-        1: "强制",
-    }
-    _DISPLAY_VIA_RMAP: ClassVar[dict[int, str]] = {
-        -2: "完全禁用",
-        -1: "仅链接",
-        0: "自动",
-        1: "强制",
-    }
-    _DISPLAY_TITLE_RMAP: ClassVar[dict[int, str]] = {
-        -1: "禁用",
-        0: "自动",
-        1: "强制",
-    }
-    _STYLE_RMAP: ClassVar[dict[int, str]] = {0: "auto", 1: "rssrt", 2: "original"}
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None):
+        return cls.model_validate(data or {})
 
-    def to_db_values(self) -> dict[str, Any]:
-        return {
-            "interval": self.interval,
-            "notify": 1 if self.notify else 0,
-            "send_mode": self._SEND_MODE_MAP.get(self.send_mode, 0),
-            "length_limit": self.length_limit,
-            "display_author": self._DISPLAY_AUTHOR_MAP.get(self.display_author, 0),
-            "display_via": self._DISPLAY_VIA_MAP.get(self.display_via, 0),
-            "display_title": self._DISPLAY_TITLE_MAP.get(self.display_title, 0),
-            "display_entry_tags": -1 if not self.display_entry_tags else 0,
-            "style": self._STYLE_MAP.get(self.style, 0),
-            "display_media": -1 if not self.display_media else 0,
-        }
+    def to_db_values(self) -> dict[str, int]:
+        return {key: int(value) for key, value in self.model_dump().items()}
+
+
+class GlobalConfig(FeedDefaultsConfig):
+    """Global defaults for ongoing subscription notifications."""
+
+    interval: int = Field(default=10, ge=1)
+    notify: bool = True
+    send_mode: Literal[1, 2] = 1
+
+    @field_validator("send_mode", "notify", mode="before")
+    @classmethod
+    def normalize_delivery_choice(cls, value: Any, info) -> Any:
+        return normalize_config_choice(info.field_name, value)
 
     @classmethod
     def normalize_send_mode_value(cls, value: Any) -> int:
-        try:
-            normalized = int(value)
-        except (TypeError, ValueError):
-            return 0
-        if normalized == 2:
-            return 1
-        if normalized == 1:
-            return 0
-        if normalized in {-1, 0}:
-            return normalized
-        return 0
+        normalized = normalize_config_choice("send_mode", value)
+        return normalized if normalized in {1, 2} else 1
 
     @classmethod
-    def from_db_values(cls, values: dict[str, Any]) -> GlobalConfig:
-        send_mode_value = cls.normalize_send_mode_value(values.get("send_mode", 0))
-        return cls(
-            interval=values.get("interval", 10),
-            notify=values.get("notify", 1) == 1,
-            send_mode=cls._SEND_MODE_RMAP.get(send_mode_value, "自动"),
-            length_limit=values.get("length_limit", 0),
-            display_author=cls._DISPLAY_AUTHOR_RMAP.get(
-                values.get("display_author", 0), "自动"
-            ),
-            display_via=cls._DISPLAY_VIA_RMAP.get(values.get("display_via", 0), "自动"),
-            display_title=cls._DISPLAY_TITLE_RMAP.get(
-                values.get("display_title", 0), "自动"
-            ),
-            display_entry_tags=values.get("display_entry_tags", -1) != -1,
-            style=cls._STYLE_RMAP.get(values.get("style", 0), "auto"),
-            display_media=values.get("display_media", 0) != -1,
+    def from_db_values(cls, values: dict[str, Any]):
+        defaults = cls().model_dump()
+        return cls.model_validate(
+            {
+                key: value
+                for key, value in values.items()
+                if key in defaults and value != -100
+            }
         )
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> GlobalConfig:
-        if not data:
-            return cls()
-        return cls.model_validate({**cls().model_dump(), **(data or {})})
 
 
 class MediaConfig(BaseModel):
@@ -259,9 +216,11 @@ class HttpConfig(BaseModel):
 class RsshubPluginConfig(BaseModel):
     """RSSHub 插件统一配置类"""
 
+    config_version: int = CONFIG_VERSION
     basic_config: BasicConfig = Field(default_factory=BasicConfig)
     http_config: HttpConfig = Field(default_factory=HttpConfig)
     global_config: GlobalConfig = Field(default_factory=GlobalConfig)
+    feed_defaults: FeedDefaultsConfig = Field(default_factory=FeedDefaultsConfig)
     media: MediaConfig = Field(default_factory=MediaConfig)
     sender_strategies: SenderStrategiesConfig = Field(
         default_factory=SenderStrategiesConfig
@@ -275,7 +234,7 @@ class RsshubPluginConfig(BaseModel):
         if not astrbot_config:
             return cls()
 
-        astrbot_config = dict(astrbot_config)
+        astrbot_config = migrate_display_config(dict(astrbot_config))
         astrbot_config.pop("download_image_before_send", None)
         http_cfg = dict(astrbot_config.get("http_config") or {})
         media_cfg = dict(astrbot_config.get("media") or {})
@@ -308,6 +267,9 @@ class RsshubPluginConfig(BaseModel):
             basic_config=BasicConfig.from_dict(basic_cfg),
             http_config=HttpConfig.from_dict(http_cfg),
             global_config=GlobalConfig.from_dict(global_cfg),
+            feed_defaults=FeedDefaultsConfig.from_dict(
+                astrbot_config.get("feed_defaults")
+            ),
             media=MediaConfig.from_dict(media_cfg),
             sender_strategies=SenderStrategiesConfig.from_config(sender_strategies_cfg),
             db_file=astrbot_config.get("db_file", "rsshub.db"),

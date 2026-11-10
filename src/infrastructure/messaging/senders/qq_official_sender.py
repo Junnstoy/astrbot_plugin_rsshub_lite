@@ -33,6 +33,32 @@ class QQOfficialMessageSender(DefaultMessageSender):
     - 多媒体消息按媒体优先、文本最后拆分发送
     """
 
+    async def _send_direct_components(
+        self, request, components, prepared_by_url, context
+    ):
+        markdown = self._use_markdown_for_context(context)
+        media = [item for item in components if self._is_media_component(item)]
+        texts = [item for item in components if item.kind == "text" and item.text]
+        if context is not None and not context.merge_media:
+            return await self._send_components_in_order(
+                request.session_id,
+                components,
+                combine_image_text=False,
+                default_text=request.message,
+                prepared_media_by_url=prepared_by_url,
+                platform="qq_official",
+                use_markdown=markdown,
+            )
+        if len(media) > 1 or (media and texts and media[0].media_type != "image"):
+            return self._unsupported_media_combination("QQ 官方 Bot")
+        # Keep the official API's markdown policy; unsupported video+text and
+        # multi-media combinations must not silently become multiple messages.
+        return await self._send_chain(
+            request.session_id,
+            self._chain_from_components(components),
+            use_markdown=markdown,
+        )
+
     async def send_to_user(
         self,
         request: SendRequest,

@@ -1,57 +1,75 @@
 # 配置说明
 
-AstrBot 配置页只保留启动级基础设施配置、媒体配置和平台发送策略。全局订阅默认值在 Plugin Pages 的默认设置中维护；用户、现有订阅和会话新订阅模板也可以通过[聊天命令](./commands.md)设置。
+AstrBot 配置页提供启动配置和全局普通/手动推送默认值。Plugin Pages 可编辑两套推送默认值并即时应用显示设置；用户、现有订阅和会话新订阅模板也可通过[聊天命令](./commands.md)设置。
 
 插件启动时会按 `_conf_schema.json` 对实际配置做轻量自愈：补齐缺失字段、移除废弃字段、修正常见类型错误，并把下拉选项和滑块数值收敛到合法范围。只有检测到实际变化时才会写回配置文件。
+
+## 两套独立的推送设置
+
+普通推送用于订阅更新；手动推送只用于 `/feed`。管理页面在普通推送下方提供独立的「手动 /feed 推送」设置，用户和订阅编辑也分别显示这两组。
+
+| 设置 | 普通推送全局 `global_config` | 手动推送全局 `feed_defaults` |
+| --- | --- | --- |
+| 发送模式 | `send_mode=1` 直接发送；可改 `2` 合并转发 | 固定合并转发，不提供 `send_mode` 字段 |
+| 排版 | `style=0` 自定义；可改 `2` 原始顺序 | 同左，默认 `0` |
+| 内容长度 | `length_limit=0` 不限 | 同左 |
+| 显示媒体、合并媒体、作者、来源、标题 | 默认启用 | 默认启用 |
+| 显示 RSS 标签 | 默认禁用 | 默认禁用 |
+| 监控间隔、通知 | `interval=10` 分钟、`notify=true` | 不适用 |
+
+全局显示开关使用勾选框，保存为 `true/false`。用户和订阅的对应字段使用 **`-100` 继承、`1` 启用、`0` 禁用**，新建时默认全继承。发送模式仅接受 `1/2`，排版仅接受 `0/2`，用户和订阅同样可用 `-100` 继承。界面不再提供自动、RSSRT、仅链接或强制显示等旧选项。
+
+手动配置在用户和订阅上使用 `feed_` 前缀：`feed_length_limit`、`feed_display_author`、`feed_display_via`、`feed_display_title`、`feed_display_entry_tags`、`feed_display_media`、`feed_style`、`feed_merge_media`。全局 `feed_defaults` 内使用不带前缀的同名字段。
 
 ## 配置范围与何时生效
 
 | 设置位置 | 作用对象 | 实际生效时间 |
 | --- | --- | --- |
-| `/sub_profile set sub <ID> ...` / 管理页订阅编辑 | 指定订阅 | 后续分发读取；已进入队列的消息不会重新排版。 |
-| `/sub_profile set user ...` / 管理页用户编辑 | 该用户不同会话中仍继承此字段的订阅 | 后续分发读取，不覆盖订阅上的显式值。 |
-| `/sub_session set ...` | 当前会话以后通过 `/sub` 新建的订阅 | 创建时复制到订阅字段；不更新已有订阅，也不是动态继承层。 |
-| Plugin Pages 全局默认设置 | 订阅和用户均继承的字段 | 保存后重载插件；发送器和调度器持有启动时构建的默认值。 |
-| AstrBot 插件配置 | 网络、媒体、调度基础设施、平台策略 | 保存后重载插件以完整生效。 |
+| `/sub_profile set sub <ID> ...` / 订阅编辑 | 指定订阅 | 后续准备消息时读取；已入队消息不会重新排版。 |
+| `/sub_profile set user ...` / 用户编辑 | 该用户不同会话中继承此字段的订阅 | 后续准备消息时读取，不覆盖订阅显式值。 |
+| `/sub_session set ...` | 当前会话以后通过 `/sub` 新建的订阅 | 创建时复制到订阅字段；不更新已有订阅。 |
+| Plugin Pages 全局普通/手动默认值 | 相应配置组中订阅和用户均继承的字段 | 保存后立即用于后续准备的消息；监控间隔仍需重载插件。 |
+| AstrBot 插件配置 | 启动配置、网络、媒体、平台策略及默认值 | 保存后重载插件以完整生效。 |
 
-发送时，`notify`、`send_mode`、`length_limit`、`display_*`、`style` 逐字段按 **订阅 → 用户 → 全局默认** 查找。只有 `-100` 表示继承，`0` 是具体值。例如用户设 `style=2`，订阅设 `style=-100`，本次使用 `2`；若订阅设 `style=0`，本次使用 `0`。
+两套继承链互不回退：
 
-会话模板先复制到新订阅，再参与上述规则。例如会话设 `style=2`，新订阅就会保存显式的 `2`，不会跟随用户之后的 `style` 变化。要恢复跟随，执行 `/sub_profile set sub <ID> style -100`。同一群的会话模板属于会话，用户默认值属于发送者，两者的范围不同。
+```text
+普通：订阅 display_title → 用户 display_title → global_config.display_title
+手动：订阅 feed_display_title → 用户 feed_display_title → feed_defaults.display_title
+```
 
-**监控间隔有独立规则：订阅正数 `interval` → 全局间隔（默认 10 分钟）。** 当前调度器不读取用户 `interval`，即使用户配置中保存了该字段也不改变抓取频率。请使用 `/sub_profile set sub 12 interval 15`，或者在创建订阅前 `/sub_session set interval 15`。订阅 `interval=-100` 恢复全局间隔；会话 `interval` 不能为 `-100`。
+只有 `-100` 表示继承；`0` 是明确禁用。将普通 `display_title` 设为 `0` 不会关闭 `/feed` 的标题，需要修改 `feed_display_title`。会话模板只是创建时复制的订阅值，不是第四层动态继承。设置查询返回保存值，不是最终解析值。
 
-`state`、`title`、`tags`、目标会话和平台都不属于发送选项继承链。持续启停使用 `/push`、`/unpush`；`notify=0` 会使自动分发跳过整条消息，不是静音通知，也不会取消已入队任务。`/push` 不会重置 `notify`。用户的 `state`、`default_target_session` 目前只是可保存的原版字段，主轮询链路和聊天 `/sub` 不用它们停推或重定向目标。
+**监控间隔规则独立：订阅正数 `interval` → 全局间隔。** 当前调度器不读取用户 `interval`。请使用 `/sub_profile set sub 12 interval 15`，或在创建订阅前 `/sub_session set interval 15`。订阅 `interval=-100` 恢复全局间隔；会话 `interval` 不能为 `-100`。
+
+`state`、`title`、`tags` 和投递目标不属于显示选项继承链。持续启停使用 `/push`、`/unpush`；`notify=0` 会使普通自动分发跳过整条消息，不是静音通知，`/push` 不会重置它。`/feed` 是手动请求，不受 `state`、`notify` 阻挡。用户 `state`、`default_target_session` 属于保留字段，主轮询链路和聊天 `/sub` 不用它们停推或重定向目标。
+
+## 发送模式与合并媒体
+
+`send_mode=1` 直接发送消息；`send_mode=2` 生成真正的合并转发。合并转发目前仅支持 OneBot，其他平台会明确返回不支持，不会静默改为多条直接消息。`/feed` 固定使用合并转发，将所选 N 条及末尾汇总放入同一个转发包。
+
+`merge_media` 决定**单条内容内部**如何组合，与是否合并转发是两个设置：启用时把该条文字和媒体放入同一直接消息或同一转发节点；禁用时按布局分别发送文字片段和媒体，或分别建立转发节点。它不修改订阅的启停状态。
+
+直接发送时，Telegram 只支持单图/单视频配正文合成一条；QQ Official 支持单图文，但不支持多媒体或视频配正文同条；Weixin OC 不支持图文同条或多媒体同条。遇到不支持的组合会提示关闭合并媒体，关闭后按顺序分别发送。这类能力错误不自动重试。
 
 ## 排版 `style` 实际行为
 
-| 值 / 管理页名称 | 当前实现 |
-| --- | --- |
-| `0` / 自动 (`auto`) | 清洗 HTML，组成标题、正文、条目标签和来源后缀，再由平台发送器安排图文、媒体和消息分段。不会保持 HTML 中所有图文位置。 |
-| `1` / RSSRT (`rssrt`) | 保留的兼容选项。目前 formatter 和 sender 没有 RSSRT 专用分支，与自动使用相同排版链路，不会额外启用另一套模板。 |
-| `2` / 原始顺序 (`original`) | 在支持的平台，使用解析出的 HTML 文本/媒体片段顺序发送；保留内容顺序，不保留网页 CSS、字体或原网页视觉样式。 |
+`style=0` 自定义排版按「作者 → 标题 → 正文 → RSS 标签 → 来源」组合文字，随后放置媒体。`style=2` 原始顺序保留源正文中可解析的图文顺序，作者和标题放在正文前，标签和来源放在正文后。两种排版均使用同一套显示开关，不保留网页 CSS 或字体。
 
-普通排版把标题、正文、标签和 `via` 来源拼成正文，再处理媒体。基础组件排序为图片、视频、音频、文件、文本，各平台仍会做消息链、合并转发、图片说明或降级处理；例如 OneBot 普通发送走合并转发，Telegram 自动模式可能转到 Telegraph。`style` 与 `send_mode` 是两个不同选项。
+- `display_author` 控制独立作者段，和来源开关互不影响；`display_via` 控制文章链接与 Feed 来源后缀。
+- `display_title=0` 关闭额外添加的条目标题。RSS 正文自身如果也有相同文字，会保留正文，不会误删正文内容。
+- `display_entry_tags` 控制 RSS/Atom 条目自带的分类标签。源没有这些标签时不显示；订阅编辑中的管理字段 `tags` 不会补充为 RSS 标签。
+- `display_media=0` 过滤媒体，保留文字。显示媒体在表单中放在长度设置后、其他显示开关前。
+- `length_limit>0` 限制正文字符数，作者、标题、标签、来源不计入；原始顺序累计限制正文文本片段。
 
-原始顺序目前由 **OneBot、QQ Official、Weixin** 的专用发送器实现，要求解析结果中有布局片段。Telegram 和默认发送器没有原始顺序分支，仍使用普通链路；平台回退到默认发送器或没有布局时也不能保证原始顺序。OneBot、QQ Official 可把图片与其后紧随的文本组合，Weixin 按片段分别发送。
-
-显示开关的边界：
-
-- 普通排版中，`display_title=-1` 隐藏标题；作者、标题的 `0` 与 `1` 都显示已有数据，缺失内容不会生成。`display_entry_tags=-1` 隐藏源条目标签，`0` 显示；订阅管理字段 `tags` 不会成为源条目标签。
-- `display_via=-1` 只保留文章链接、不带 Feed 来源名；`-2` 移除整个来源后缀，也隐藏该后缀中的作者。`display_author=-1` 单独隐藏作者。
-- `length_limit>0` 在普通排版中限制正文字符数，标题和来源后缀不计入；原始顺序则累计限制布局中的文本片段，媒体保留。
-- 原始顺序直接发送 HTML 布局，通常不包含 formatter 额外拼接的标题、标签、作者或 `via` 后缀；`display_title` 等选项不能保证与普通排版得到相同外观。
-- `display_media=-1` 会清除媒体和原始布局，改走文本链路；`send_mode=-1` 会直接只发条目标题和链接，忽略媒体及原始布局。
-
-可在当前会话选一个订阅比较：
+手动推送使用对应的 `feed_` 选项。例如只调整 `/feed` 的标题与媒体：
 
 ```text
-/sub_profile set sub 12 style 0
-/feed 12 1
-/sub_profile set sub 12 style 2
-/feed 12 1
+/sub_profile set sub 12 feed_display_title 0
+/sub_profile set sub 12 feed_display_media 1
+/sub_profile set sub 12 feed_style 2
+/feed 12 3
 ```
-
-`/feed` 需要 AstrBot 管理员权限，允许重复发送当前源内容。若仅切换 `style=1`，当前实现不会出现区别于 `style=0` 的专用模板。
 
 ## 基础配置 (`basic_config`)
 
@@ -103,15 +121,21 @@ AstrBot 配置页只保留启动级基础设施配置、媒体配置和平台发
 
 | 配置项 | 作用范围 | 说明 |
 | --- | --- | --- |
-| `enable_telegraph` | Telegram | 启用 Telegraph 自动分流。 |
-| `telegraph_token` | Telegram | Telegraph access token；启用自动分流时必填。 |
+| `enable_telegraph` | Telegram | 保留的旧 Telegraph 策略字段；当前直接/合并模式不走自动分流。 |
+| `telegraph_token` | Telegram | 保留的 Telegraph access token 配置。 |
 | `telegraph_proxy` | Telegram | Telegraph createPage API 独立代理；留空直连且不继承 `http_config.proxy`，裸 `host:port` 按 `http://` 处理。 |
 | `prefer_local_video` | OneBot | 覆盖默认视频来源策略；默认优先使用本地视频文件。 |
 | `markdown_mode` | QQ Official | 预留 Markdown 三态配置；当前主动推送临时统一按纯文本发送。 |
 
-Telegraph 不是显式 `send_mode`。它只在 Telegram 自动发送策略中触发：自动发送、Telegram 策略启用 Telegraph、token 有效，且去重后的媒体条目数大于 1。
+发送模式不再提供自动选项；直接发送按当前平台能力投递，合并转发仅在支持的平台执行。历史 Telegraph 策略字段保留兼容，不把它作为新的发送模式。
 
 ## 旧配置兼容
+
+当前配置版本为 `config_version=3`。启动时先迁移旧值，再按 schema 自愈；版本标记保留在隐藏配置项中，保证之后保存的 `0=禁用` 不会被反复转换。旧自动/仅链接发送迁移为直接发送，RSSRT 迁移为自定义排版。
+
+用户和订阅数据库只在 `V3_display_profiles` 迁移中转换一次：作者、标题、标签、媒体原先 `-1` 转 `0`，原先 `0/1` 转 `1`；来源原先 `-2` 转 `0`、`-1/0/1` 转 `1`；发送模式 `-1/0` 转 `1`；排版 `1` 转 `0`，所有 `-100` 继续继承。新增 `merge_media` 及八个 `feed_` 字段默认 `-100`。这不读取或迁移旧 NB2 插件的数据。
+
+新 TOML 导出使用版本 3。导入无版本、版本 1 或 2 的文件时按旧值含义转换；版本 3 使用当前枚举严格校验。
 
 精简版已删除 `content_handlers`、`route_knowledge` 配置块。旧配置启动自愈后会移除这些字段，不再选择模型、人格或知识库。
 

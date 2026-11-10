@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ....shared.profile_options import NEW_PROFILE_FIELDS
 from ...utils import get_logger
 
 logger = get_logger()
@@ -375,6 +376,15 @@ async def ensure_user_rows(conn) -> int:
         "display_entry_tags": "-100",
         "style": "-100",
         "display_media": "-100",
+        "merge_media": "-100",
+        "feed_length_limit": "-100",
+        "feed_display_author": "-100",
+        "feed_display_via": "-100",
+        "feed_display_title": "-100",
+        "feed_display_entry_tags": "-100",
+        "feed_display_media": "-100",
+        "feed_style": "-100",
+        "feed_merge_media": "-100",
         "needs_binding_notice": "0",
         "created_at": "CURRENT_TIMESTAMP",
         "updated_at": "CURRENT_TIMESTAMP",
@@ -478,6 +488,18 @@ async def ensure_profile_schema(conn) -> list[str]:
             )
             applied.append("rsshub_sub.handlers_mode")
             logger.info("数据库 schema 自愈: 为 rsshub_sub 添加 handlers_mode 字段")
+
+    # Column repair is idempotent. Value conversion belongs exclusively to V3.
+    for table in ("rsshub_user", "rsshub_sub"):
+        if not await _table_exists(table):
+            continue
+        columns = await _column_names(table)
+        for key in NEW_PROFILE_FIELDS:
+            if key not in columns:
+                await conn.exec_driver_sql(
+                    f"ALTER TABLE {table} ADD COLUMN {key} INTEGER NOT NULL DEFAULT -100"
+                )
+                applied.append(f"{table}.{key}")
 
     return applied
 

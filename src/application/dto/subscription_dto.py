@@ -24,6 +24,25 @@ class SubscriptionDTO(BaseModel):
     target_session: str | None = Field(default=None, description="推送目标会话")
     platform_name: str | None = Field(default=None, description="平台类型名")
     state: int = Field(default=1, description="状态: 0=停用, 1=启用")
+    interval: int = -100
+    notify: int = -100
+    send_mode: int = -100
+    length_limit: int = -100
+    display_author: int = -100
+    display_via: int = -100
+    display_title: int = -100
+    display_entry_tags: int = -100
+    style: int = -100
+    display_media: int = -100
+    merge_media: int = -100
+    feed_length_limit: int = -100
+    feed_display_author: int = -100
+    feed_display_via: int = -100
+    feed_display_title: int = -100
+    feed_display_entry_tags: int = -100
+    feed_display_media: int = -100
+    feed_style: int = -100
+    feed_merge_media: int = -100
     created_at: datetime = Field(description="创建时间")
     updated_at: datetime = Field(description="更新时间")
 

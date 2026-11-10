@@ -12,7 +12,7 @@ export const subscriptionsActionsTemplate = [
       `<button class="btn" :class="editMode ? 'btn-primary' : 'btn-secondary'" type="button" @click="toggleEditMode()">{{ editMode ? '完成编辑' : '批量操作' }}</button>`,
     ],
   }),
-  batchToolbarTemplate({ visibleExpr: 'editMode && selectedIds.length > 0', countExpr: 'selectedIds.length', buttons: [
+  batchToolbarTemplate({ visibleExpr: "activeTab === 'subs' && editMode && selectedIds.length > 0", countExpr: 'selectedIds.length', buttons: [
     `<button class="btn btn-primary btn-small" :class="{ 'is-loading': isPending('batch:activate') }" :disabled="isPending('batch:activate')" @click="batchActivate()">批量启用</button>`,
     `<button class="btn btn-secondary btn-small" :class="{ 'is-loading': isPending('batch:deactivate') }" :disabled="isPending('batch:deactivate')" @click="batchDeactivate()">批量禁用</button>`,
     `<button class="btn btn-danger btn-small" :class="{ 'is-loading': isPending('batch:unsubscribe') }" :disabled="isPending('batch:unsubscribe')" @click="batchUnsubscribe()">批量取消</button>`,

@@ -7,7 +7,9 @@ import {
 import {
   normalizeUserState,
   createInheritedNumberValue,
-  inheritedNumberToPayload
+  inheritedNumberToPayload,
+  createInheritedPushForm,
+  inheritedPushToPayload
 } from '../helpers.js';
 
 export const usersModule = {
@@ -83,15 +85,7 @@ export const usersModule = {
       interval: user.interval ?? -100,
       interval_control: createInheritedNumberValue(user.interval ?? -100, 10),
       notify: user.notify ?? -100,
-      send_mode: user.send_mode ?? -100,
-      length_limit: user.length_limit ?? -100,
-      length_limit_control: createInheritedNumberValue(user.length_limit ?? -100, 0),
-      display_author: user.display_author ?? -100,
-      display_via: user.display_via ?? -100,
-      display_title: user.display_title ?? -100,
-      display_entry_tags: user.display_entry_tags ?? -100,
-      style: user.style ?? -100,
-      display_media: user.display_media ?? -100,
+      ...createInheritedPushForm(user),
     };
     this.userEditPanelVisible = true;
   },
@@ -106,14 +100,7 @@ export const usersModule = {
         state: normalizeUserState(this.userEditForm.state),
         interval: inheritedNumberToPayload(this.userEditForm.interval_control),
         notify: this.userEditForm.notify,
-        send_mode: this.userEditForm.send_mode,
-        length_limit: inheritedNumberToPayload(this.userEditForm.length_limit_control),
-        display_author: this.userEditForm.display_author,
-        display_via: this.userEditForm.display_via,
-        display_title: this.userEditForm.display_title,
-        display_entry_tags: this.userEditForm.display_entry_tags,
-        style: this.userEditForm.style,
-        display_media: this.userEditForm.display_media,
+        ...inheritedPushToPayload(this.userEditForm),
       };
       await updateUser(this.userEditForm.user_id, settings);
       this.showToast('用户配置已更新');

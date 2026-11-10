@@ -115,6 +115,70 @@ class OneBotMessageSender(DefaultMessageSender):
             return Node(content=content, name=nickname, uin=bot_self_id)
         return Node(content=content, name=nickname)
 
+    async def send_merged(self, request, context=None) -> SendResult:
+        """Send all entries and the optional summary as one forward message."""
+        owned_prepared = []
+        try:
+            nickname = (
+                context.channel.title if context and context.channel.title else "RSSHub"
+            )
+            bot_self_id = self._resolve_bot_self_id(context)
+            nodes = []
+            entries = request.entries if request.entries is not None else [request]
+            for entry in entries:
+                item_request = SendRequest(
+                    session_id=request.session_id,
+                    message=entry.message,
+                    media=entry.media,
+                    layout=entry.layout,
+                    prepared_media=getattr(entry, "prepared_media", None),
+                )
+                prepared = await self._prepare_effective_media(item_request, context)
+                if item_request.prepared_media is None:
+                    owned_prepared.extend(prepared or [])
+                components, _ = self._configured_components(
+                    item_request, prepared, context
+                )
+                if not components:
+                    continue
+                groups = (
+                    [components]
+                    if context is None or context.merge_media
+                    else [[item] for item in components]
+                )
+                for group in groups:
+                    chain = self._chain_from_components(group)
+                    if chain:
+                        nodes.append(
+                            self._build_forward_node(chain, nickname, bot_self_id)
+                        )
+            if not nodes:
+                return SendResult(ok=False, detail="empty_message")
+            bot_client = self._resolve_bot_client(context)
+            napcat_mode = self._napcat_stream_mode(context)
+            if napcat_mode == "always" and bot_client is not None:
+                nodes = await self._stream_upload_nodes(bot_client, nodes)
+            result = await self._send_chain(request.session_id, [Nodes(nodes)])
+            if (
+                not result.ok
+                and napcat_mode == "fallback"
+                and bot_client is not None
+                and self._has_local_video_nodes(nodes)
+            ):
+                nodes = await self._stream_upload_nodes(bot_client, nodes)
+                result = await self._send_chain(request.session_id, [Nodes(nodes)])
+            # Never silently turn a failed merged forward into ordinary messages.
+            return result
+        except Exception as err:
+            logger.exception("Merged send failed: session=%s", request.session_id)
+            return SendResult(
+                ok=False,
+                transient=self._is_transient_network_error(err),
+                detail=self._stage_error_detail("merged_send", str(err)),
+            )
+        finally:
+            self._cleanup_owned_paths(owned_prepared)
+
     async def send_to_user(
         self,
         request: SendRequest,

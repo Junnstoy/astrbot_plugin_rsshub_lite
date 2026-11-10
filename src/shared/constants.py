@@ -25,27 +25,22 @@ class NotifyState(IntEnum):
 
 
 class SendMode(IntEnum):
-    LINK_ONLY = -1
-    AUTO = 0
     DIRECT = 1
+    MERGED = 2
 
 
 class DisplayToggle(IntEnum):
-    DISABLED = -1
-    AUTO = 0
-    FORCED = 1
+    DISABLED = 0
+    ENABLED = 1
 
 
 class DisplayVia(IntEnum):
-    FULLY_DISABLED = -2
-    LINK_ONLY = -1
-    AUTO = 0
-    FORCED = 1
+    DISABLED = 0
+    ENABLED = 1
 
 
 class StyleMode(IntEnum):
-    AUTO = 0
-    RSSRT = 1
+    CUSTOM = 0
     ORIGINAL = 2
 
 
@@ -110,22 +105,25 @@ NOTIFY_DISABLED = int(NotifyState.DISABLED)
 NOTIFY_ENABLED = int(NotifyState.ENABLED)
 NOTIFY_STATES = {int(item) for item in NotifyState}
 
-SEND_MODE_LINK_ONLY = int(SendMode.LINK_ONLY)
-SEND_MODE_AUTO = int(SendMode.AUTO)
+SEND_MODE_LINK_ONLY = -1  # Legacy data only; not a selectable mode.
+SEND_MODE_AUTO = 0  # Legacy data only; not a selectable mode.
 SEND_MODE_DIRECT = int(SendMode.DIRECT)
+SEND_MODE_MERGED = int(SendMode.MERGED)
 SEND_MODES = {int(item) for item in SendMode}
 
 DISPLAY_DISABLED = int(DisplayToggle.DISABLED)
-DISPLAY_AUTO = int(DisplayToggle.AUTO)
-DISPLAY_FORCED = int(DisplayToggle.FORCED)
+DISPLAY_ENABLED = int(DisplayToggle.ENABLED)
+DISPLAY_AUTO = 0  # Legacy alias.
+DISPLAY_FORCED = DISPLAY_ENABLED
 
-DISPLAY_VIA_FULLY_DISABLED = int(DisplayVia.FULLY_DISABLED)
-DISPLAY_VIA_LINK_ONLY = int(DisplayVia.LINK_ONLY)
-DISPLAY_VIA_AUTO = int(DisplayVia.AUTO)
-DISPLAY_VIA_FORCED = int(DisplayVia.FORCED)
+DISPLAY_VIA_FULLY_DISABLED = -2  # Legacy data only.
+DISPLAY_VIA_LINK_ONLY = -1  # Legacy data only.
+DISPLAY_VIA_AUTO = 0  # Legacy data only.
+DISPLAY_VIA_FORCED = DISPLAY_ENABLED
 
-STYLE_AUTO = int(StyleMode.AUTO)
-STYLE_RSSRT = int(StyleMode.RSSRT)
+STYLE_CUSTOM = int(StyleMode.CUSTOM)
+STYLE_AUTO = STYLE_CUSTOM  # Legacy alias.
+STYLE_RSSRT = 1  # Legacy data only; migrate to custom.
 STYLE_ORIGINAL = int(StyleMode.ORIGINAL)
 STYLE_RSSTT = STYLE_AUTO
 STYLE_FLOWERSS = STYLE_AUTO

@@ -25,4 +25,6 @@ async def handle_feed(event: AstrMessageEvent, args: str, deps: dict) -> dict:
         target_session=event.unified_msg_origin,
         platform_name=event.get_platform_name(),
     )
+    if isinstance(result.data, dict) and result.data.get("summary_included"):
+        return {}
     return {"plain": result.message}

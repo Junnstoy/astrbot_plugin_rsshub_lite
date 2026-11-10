@@ -53,7 +53,7 @@ class Subscription(BaseModel):
     notify: int = Field(default=INHERIT_VALUE, description="是否通知")
     send_mode: int = Field(
         default=INHERIT_VALUE,
-        description="发送模式: -100=继承, -1=仅链接, 0=自动, 1=直接发送",
+        description="发送模式: -100=继承, 1=直接发送, 2=合并消息",
     )
     length_limit: int = Field(default=INHERIT_VALUE, description="长度限制")
     display_author: int = Field(default=INHERIT_VALUE, description="显示作者")
@@ -71,6 +71,32 @@ class Subscription(BaseModel):
         alias="handlers",
         description="内容处理 handlers",
     )
+    merge_media: int = Field(
+        default=INHERIT_VALUE, description="merge_media: -100=继承"
+    )
+    feed_length_limit: int = Field(
+        default=INHERIT_VALUE, description="feed_length_limit: -100=继承"
+    )
+    feed_display_author: int = Field(
+        default=INHERIT_VALUE, description="feed_display_author: -100=继承"
+    )
+    feed_display_via: int = Field(
+        default=INHERIT_VALUE, description="feed_display_via: -100=继承"
+    )
+    feed_display_title: int = Field(
+        default=INHERIT_VALUE, description="feed_display_title: -100=继承"
+    )
+    feed_display_entry_tags: int = Field(
+        default=INHERIT_VALUE, description="feed_display_entry_tags: -100=继承"
+    )
+    feed_display_media: int = Field(
+        default=INHERIT_VALUE, description="feed_display_media: -100=继承"
+    )
+    feed_style: int = Field(default=INHERIT_VALUE, description="feed_style: -100=继承")
+    feed_merge_media: int = Field(
+        default=INHERIT_VALUE, description="feed_merge_media: -100=继承"
+    )
+
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), description="创建时间"
     )

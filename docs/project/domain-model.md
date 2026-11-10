@@ -11,19 +11,22 @@
 | --- | --- | --- | --- |
 | 配置继承标记 | `-100` | 订阅继承用户配置，用户继承全局默认 | 不恢复 `use_sub_config` / `use_user_config`。 |
 | 用户状态 | `1` / `-1` | `USER_STATE_USER` / `USER_STATE_BANNED` | 旧非负状态统一视为普通用户。 |
-| `send_mode` | `-1` / `0` / `1` | 仅链接 / 自动 / 直接发送 | 旧 `1=Telegraph` 归一化为 `0`，旧 `2=直接消息` 归一化为 `1`。 |
-| `style` | `0` / `1` / `2` | 自动或平台经典 / RSSRT / original | 旧 `flowerss=1` 迁移为 `0`，不恢复 flowerss UI 文案。 |
-| 显示类字段 | 整数状态 | `display_author`、`display_via`、`display_title`、`display_entry_tags`、`display_media` | 需要支持继承，不能简化为 `true/false`。 |
+| `send_mode` | `1` / `2` | 直接消息 / 真正合并转发 | 用户/订阅另支持 `-100`；手动 `/feed` 固定 `2`，无 feed_send_mode。 |
+| `style` | `0` / `2` | 自定义排版 / 原始正文图文顺序 | 用户/订阅另支持 `-100`，不再暴露 RSSRT。 |
+| 显示类字段 | 全局 bool；用户/订阅 `-100/0/1` | `display_author`、`display_via`、`display_title`、`display_entry_tags`、`display_media` | `0` 禁用、`1` 启用；`-100` 继承。 |
+| `merge_media` | 同显示类字段 | 单条内容的文字媒体是否放在同一消息/转发节点 | 与 send_mode 独立，用户/订阅默认继承。 |
+| 手动显示字段 | 八个 `feed_` 前缀字段，默认 `-100` | 长度、作者、来源、标题、条目标签、媒体、排版、合并媒体 | 只继承独立 feed_defaults，不回退普通字段。 |
 | `source_type` | `feed` / `agent` | 当前订阅推送 / 旧版 AI 或 XML 即时推送历史 | 新建入口仅使用 `feed`；旧 `agent` 历史继续可读、可重试。 |
 | `handlers_mode` | disabled / override / inherit 等 | 旧库兼容字段，不参与当前推送 | 保留原版模型与迁移，不恢复处理器配置入口。 |
 
 配置继承关系：
 
 ```text
-subscription option
-  -> user option
-  -> global default
+普通：subscription option -> user option -> global_config option
+手动：subscription feed_option -> user feed_option -> feed_defaults option
 ```
+
+仅显示/发送选项按这两套规则解析。订阅 `interval` 为正数时优先，否则使用全局间隔，调度器不读取用户 interval。状态、投递目标和管理 title/tags 不属于显示继承字段。
 
 ## 数据模型约束
 
@@ -44,9 +47,11 @@ subscription option
 | `rsshub_user.handlers` | 保留旧用户级 JSON 配置 | 不作为处理链继承来源。 |
 | `handlers_mode` | 保留旧继承、覆盖、禁用值 | 三种模式在当前推送中均不执行处理器。 |
 | `handler_trace` | 保留原版历史列 | 新历史留空，旧历史不擦除。 |
-| 原版迁移 | ORM 与迁移保持原样，允许打开已有数据库 | 即使旧迁移保留 AI 配置数据，也不会触发执行。 |
+| 数据库升级 | 保留原表和原迁移，增加 `V3_display_profiles` | 新增 merge_media/feed_* 列并一次转换旧显示值；旧处理器 JSON 不擦除、不执行。 |
 
 HTML/XML 基础清洗仍属于解析与格式化链；`ai_filter`、`ai_transform` 及相应运行时、配置和工具入口已移除。
+
+当前选项字段清单、写入验证和一次性旧值转换统一在 `src/shared/profile_options.py`。数据库升级保留 `-100`；旧显示禁用值转 `0`、自动/启用值转 `1`；旧自动/仅链接发送转 `1`，RSSRT 转自定义 `0`。全局配置和 TOML 标记为版本 3，不能把当前 `0=禁用` 重复当成旧自动值转换。完整映射见[配置兼容](../usage/configuration.md#旧配置兼容)。
 
 ## 推送历史状态与来源
 
@@ -81,8 +86,8 @@ HTML/XML 基础清洗仍属于解析与格式化链；`ai_filter`、`ai_transfor
 
 | 配置面 | 暴露内容 | 不属于这里 |
 | --- | --- | --- |
-| `_conf_schema.json` | HTTP 网络配置、credentials、平台 sender strategy、启动级媒体运行配置（如 FFmpeg 来源与镜像） | 订阅默认值、用户/订阅继承选项、推送历史页业务设置。 |
-| Plugin Pages | 订阅默认值、用户配置、订阅配置、推送历史清理设置 | 启动级网络、credentials 和 sender 的底层 schema 定义。 |
+| `_conf_schema.json` | 网络、平台 sender strategy、媒体运行配置及 global_config/feed_defaults | 用户/订阅继承选项、推送历史页业务设置。 |
+| Plugin Pages | 普通和手动全局默认、用户配置、订阅配置、推送历史清理设置 | 启动级网络、credentials 和 sender 的底层 schema 定义。 |
 | 配置自愈测试 | `_conf_schema.json` 字段新增、删除、类型变化时必须同步 | 不要只改 schema 而不更新自愈回归。 |
 
 固定选择字段使用 `options`；有上下界的数字字段使用 `slider`。

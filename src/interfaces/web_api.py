@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
-from quart import Response, jsonify, request
-
 from astrbot.api import AstrBotConfig
 from astrbot.api.star import Context
+from quart import Response, jsonify, request
 
 from ..application.commands.batch_activate_cmd import BatchActivateCommand
 from ..application.commands.batch_deactivate_cmd import BatchDeactivateCommand
@@ -42,7 +41,6 @@ from ..domain.repositories.feed_repository import FeedRepository
 from ..domain.repositories.push_history_repository import PushHistoryRepository
 from ..domain.repositories.subscription_repository import SubscriptionRepository
 from ..domain.repositories.user_repository import UserRepository
-from ..shared.constants import INHERIT_VALUE
 from ..infrastructure.config import (
     RsshubPluginConfig,
     build_application_settings,
@@ -50,6 +48,13 @@ from ..infrastructure.config import (
     validate_interval_value,
 )
 from ..infrastructure.utils import get_plugin_cache_dir, get_plugin_export_dir
+from ..shared.constants import INHERIT_VALUE
+from ..shared.profile_options import (
+    FEED_DEFAULT_FIELDS as DISPLAY_SETTING_FIELDS,
+)
+from ..shared.profile_options import (
+    PROFILE_OPTION_FIELDS as PUSH_SETTING_FIELDS,
+)
 
 PLUGIN_NAME = "astrbot_plugin_rsshub"
 USER_ID_REQUIRED_ERROR = "user_id 不能为空"
@@ -351,14 +356,10 @@ class WebApiHandler:
                     "platform_name": s.platform_name,
                     "interval": s.interval,
                     "notify": s.notify,
-                    "send_mode": s.send_mode,
-                    "length_limit": s.length_limit,
-                    "display_author": s.display_author,
-                    "display_via": s.display_via,
-                    "display_title": s.display_title,
-                    "display_entry_tags": s.display_entry_tags,
-                    "style": s.style,
-                    "display_media": s.display_media,
+                    **{
+                        key: getattr(s, key, INHERIT_VALUE)
+                        for key in PUSH_SETTING_FIELDS
+                    },
                     "created_at": s.created_at.isoformat() if s.created_at else None,
                     "updated_at": s.updated_at.isoformat() if s.updated_at else None,
                 }
@@ -485,14 +486,10 @@ class WebApiHandler:
                     "state": u.state,
                     "interval": u.interval,
                     "notify": u.notify,
-                    "send_mode": u.send_mode,
-                    "length_limit": u.length_limit,
-                    "display_author": u.display_author,
-                    "display_via": u.display_via,
-                    "display_title": u.display_title,
-                    "display_entry_tags": u.display_entry_tags,
-                    "style": u.style,
-                    "display_media": u.display_media,
+                    **{
+                        key: getattr(u, key, INHERIT_VALUE)
+                        for key in PUSH_SETTING_FIELDS
+                    },
                     "default_target_session": u.default_target_session,
                     "subscription_count": subscription_counts.get(u.id, {}).get(
                         "subscription_count", 0
@@ -1216,6 +1213,7 @@ class WebApiHandler:
                 "subscription_defaults": _dump_dataclass_like(
                     settings.subscription_defaults
                 ),
+                "feed_defaults": _dump_dataclass_like(settings.feed_defaults),
             }
         )
 
@@ -1232,8 +1230,9 @@ class WebApiHandler:
         if not data:
             return jsonify({"ok": False, "error": "请求体为空"})
 
-        subscription_updates = data.get("subscription_defaults") or {}
-        if not isinstance(subscription_updates, dict):
+        subscription_updates = data.get("subscription_defaults", {})
+        feed_updates = data.get("feed_defaults", {})
+        if not isinstance(subscription_updates, dict) or not isinstance(feed_updates, dict):
             return jsonify({"ok": False, "error": "配置格式无效"})
 
         try:
@@ -1251,21 +1250,31 @@ class WebApiHandler:
                     **config_dict.get("global_config", {}),
                     **subscription_updates,
                 }
+            if feed_updates:
+                config_dict["feed_defaults"] = {
+                    **config_dict.get("feed_defaults", {}),
+                    **{key: value for key, value in feed_updates.items() if key in DISPLAY_SETTING_FIELDS},
+                }
 
             updated = RsshubPluginConfig.from_astrbot_config(config_dict)
             updated.save(self._raw_config)
             self._config = updated
             set_config(updated)
+            settings = build_application_settings(updated)
+            if self._notification_dispatcher is not None:
+                self._notification_dispatcher.apply_defaults(
+                    settings.subscription_defaults, settings.feed_defaults
+                )
             self._bump_counter()
             asyncio.create_task(self._broadcast({"event": "settings_changed"}))
-            settings = build_application_settings(updated)
             return jsonify(
                 {
                     "ok": True,
-                    "message": "插件设置已保存，部分运行时设置需重启插件后完全生效",
+                    "message": "推送默认设置已保存并应用；监控间隔在重载插件后生效",
                     "subscription_defaults": _dump_dataclass_like(
                         settings.subscription_defaults
                     ),
+                    "feed_defaults": _dump_dataclass_like(settings.feed_defaults),
                 }
             )
         except Exception as exc:

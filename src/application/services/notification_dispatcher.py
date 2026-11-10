@@ -25,7 +25,7 @@ from ...domain.entities.push_history import PushHistory
 from ...domain.repositories.push_history_repository import PushHistoryRepository
 from ...domain.repositories.subscription_repository import SubscriptionRepository
 from ...domain.repositories.user_repository import UserRepository
-from ...infrastructure.config import BasicSettings, SubscriptionDefaults
+from ...infrastructure.config import BasicSettings, FeedDefaults, SubscriptionDefaults
 from ...infrastructure.pipeline import (
     EffectivePushOptions,
     EntryFormatInput,
@@ -36,12 +36,11 @@ from ...infrastructure.rendering import cleanup_ephemeral_generated_media_paths
 from ...infrastructure.utils import get_logger
 from ...shared.constants import (
     INHERIT_VALUE,
-    SEND_MODE_AUTO,
     SEND_MODE_DIRECT,
-    SEND_MODE_LINK_ONLY,
+    SEND_MODE_MERGED,
     STYLE_ORIGINAL,
 )
-from ..ports import MessageContext, MessageSenderProvider, SendRequest
+from ..ports import MessageContext, MessageSenderProvider, SendEntry, SendRequest
 from .entry_content import EntryContentContext
 from .session_push_queue import PushJob, SessionPushQueue
 
@@ -62,6 +61,8 @@ UNRECOVERABLE_ERROR_PATTERNS: tuple[str, ...] = (
     "forbidden",
     "not found",
     "invalid target",
+    "merged_forward_not_supported",
+    "combined_media_not_supported",
 )
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")
@@ -91,6 +92,7 @@ class PreparedSubscriptionDispatch:
     effective_content: str
     effective_send_mode: int
     effective_style: int
+    merge_media: bool
     effective_media_urls: list[str] | None
     effective_media_items: list[tuple[str, str]] | None
     effective_layout: list[LayoutFragment] | None
@@ -229,19 +231,24 @@ class NotificationDispatcher:
         push_job_queue: SessionPushQueue | None = None,
         subscription_defaults: SubscriptionDefaults | None = None,
         basic_settings: BasicSettings | None = None,
+        feed_defaults: FeedDefaults | None = None,
     ):
         self._subscription_repo = subscription_repo
         self._user_repo = user_repo
         self._push_history_repo = push_history_repo
         self._sender_provider = sender_provider
         self._push_job_queue = push_job_queue or SessionPushQueue()
-        self._default_push_options = self._options_from_subscription_defaults(
-            subscription_defaults or SubscriptionDefaults()
-        )
-        self._default_send_mode = self._send_mode_from_subscription_defaults(
-            subscription_defaults or SubscriptionDefaults()
-        )
+        self.apply_defaults(subscription_defaults, feed_defaults)
         self._basic_settings = basic_settings or BasicSettings()
+
+    def apply_defaults(self, subscription_defaults=None, feed_defaults=None) -> None:
+        """Refresh runtime display defaults after a configuration update."""
+        normal = subscription_defaults or SubscriptionDefaults()
+        self._default_push_options = self._options_from_subscription_defaults(normal)
+        self._default_feed_options = self._options_from_subscription_defaults(
+            feed_defaults or FeedDefaults()
+        )
+        self._default_send_mode = self._send_mode_from_subscription_defaults(normal)
 
     @staticmethod
     def _target_from_subscription(subscription) -> SendTarget:
@@ -267,22 +274,21 @@ class NotificationDispatcher:
         try:
             normalized = int(value)
         except (TypeError, ValueError):
-            return SEND_MODE_AUTO
-        if normalized in {SEND_MODE_LINK_ONLY, SEND_MODE_AUTO, SEND_MODE_DIRECT}:
+            return SEND_MODE_DIRECT
+        if normalized in {SEND_MODE_DIRECT, SEND_MODE_MERGED}:
             return normalized
-        return SEND_MODE_AUTO
+        return SEND_MODE_DIRECT
 
     @staticmethod
     def _send_mode_from_subscription_defaults(defaults: SubscriptionDefaults) -> int:
-        value = getattr(defaults, "send_mode", "自动")
+        value = getattr(defaults, "send_mode", SEND_MODE_DIRECT)
         if isinstance(value, str):
             return {
-                "仅链接": SEND_MODE_LINK_ONLY,
-                "自动": SEND_MODE_AUTO,
                 "直接发送": SEND_MODE_DIRECT,
+                "合并转发": SEND_MODE_MERGED,
             }.get(
                 value.strip(),
-                SEND_MODE_AUTO,
+                SEND_MODE_DIRECT,
             )
         return NotificationDispatcher._normalize_send_mode_value(value)
 
@@ -290,45 +296,16 @@ class NotificationDispatcher:
     def _options_from_subscription_defaults(
         defaults: SubscriptionDefaults,
     ) -> EffectivePushOptions:
-        def display_value(
-            value: Any, mapping: dict[str, int], fallback: int = 0
-        ) -> int:
-            if isinstance(value, str):
-                return mapping.get(value.strip(), fallback)
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return fallback
-
         return EffectivePushOptions(
             notify=bool(getattr(defaults, "notify", True)),
             length_limit=max(0, int(getattr(defaults, "length_limit", 0) or 0)),
-            display_author=display_value(
-                getattr(defaults, "display_author", "自动"),
-                {"禁用": -1, "自动": 0, "强制": 1},
-            ),
-            display_via=display_value(
-                getattr(defaults, "display_via", "自动"),
-                {"完全禁用": -2, "仅链接": -1, "自动": 0, "强制": 1},
-            ),
-            display_title=display_value(
-                getattr(defaults, "display_title", "自动"),
-                {"禁用": -1, "自动": 0, "强制": 1},
-            ),
+            display_author=bool(getattr(defaults, "display_author", True)),
+            display_via=bool(getattr(defaults, "display_via", True)),
+            display_title=bool(getattr(defaults, "display_title", True)),
             display_entry_tags=bool(getattr(defaults, "display_entry_tags", False)),
-            style=display_value(
-                getattr(defaults, "style", "auto"),
-                {
-                    "auto": 0,
-                    "classic": 0,
-                    "RSStT": 0,
-                    "rssrt": 1,
-                    "RSSRT": 1,
-                    "flowerss": 0,
-                    "original": 2,
-                },
-            ),
+            style=2 if getattr(defaults, "style", 0) == 2 else 0,
             display_media=bool(getattr(defaults, "display_media", True)),
+            merge_media=bool(getattr(defaults, "merge_media", True)),
         )
 
     def _resolve_send_mode(self, subscription: Any = None, user: Any = None) -> int:
@@ -346,60 +323,33 @@ class NotificationDispatcher:
         self,
         subscription: Any = None,
         user: Any = None,
+        *,
+        profile: str = "push",
     ) -> EffectivePushOptions:
-        defaults = self._default_push_options
+        if profile not in {"push", "feed"}:
+            raise ValueError(f"Unknown push profile: {profile}")
+        defaults = (
+            self._default_feed_options
+            if profile == "feed"
+            else self._default_push_options
+        )
+        prefix = "feed_" if profile == "feed" else ""
+
+        def value(key):
+            return self._resolve_option(
+                prefix + key, subscription, user, getattr(defaults, key)
+            )
+
         return EffectivePushOptions(
-            notify=bool(
-                self._resolve_option("notify", subscription, user, int(defaults.notify))
-            ),
-            length_limit=max(
-                0,
-                int(
-                    self._resolve_option(
-                        "length_limit", subscription, user, defaults.length_limit
-                    )
-                    or 0
-                ),
-            ),
-            display_author=int(
-                self._resolve_option(
-                    "display_author", subscription, user, defaults.display_author
-                )
-                or 0
-            ),
-            display_via=int(
-                self._resolve_option(
-                    "display_via", subscription, user, defaults.display_via
-                )
-                or 0
-            ),
-            display_title=int(
-                self._resolve_option(
-                    "display_title", subscription, user, defaults.display_title
-                )
-                or 0
-            ),
-            display_entry_tags=bool(
-                self._resolve_option(
-                    "display_entry_tags",
-                    subscription,
-                    user,
-                    0 if defaults.display_entry_tags else -1,
-                )
-                != -1
-            ),
-            style=int(
-                self._resolve_option("style", subscription, user, defaults.style) or 0
-            ),
-            display_media=bool(
-                self._resolve_option(
-                    "display_media",
-                    subscription,
-                    user,
-                    0 if defaults.display_media else -1,
-                )
-                != -1
-            ),
+            notify=True if profile == "feed" else bool(value("notify")),
+            length_limit=max(0, int(value("length_limit") or 0)),
+            display_author=bool(value("display_author")),
+            display_via=bool(value("display_via")),
+            display_title=bool(value("display_title")),
+            display_entry_tags=bool(value("display_entry_tags")),
+            style=2 if value("style") == 2 else 0,
+            display_media=bool(value("display_media")),
+            merge_media=bool(value("merge_media")),
         )
 
     @staticmethod
@@ -460,6 +410,8 @@ class NotificationDispatcher:
             str(prepared.subscription.target_session or ""),
             str(prepared.subscription.platform_name or ""),
             int(prepared.effective_send_mode),
+            bool(prepared.merge_media),
+            int(prepared.effective_style),
             str(prepared.effective_content or ""),
             tuple(
                 normalize_media_items(
@@ -530,6 +482,7 @@ class NotificationDispatcher:
         bypass_success_dedup: bool = False,
         event: AstrMessageEvent | Any | None = None,
         include_error_detail: bool = False,
+        completion_summary: str = "",
     ) -> dict[str, Any]:
         """
         将条目分发给 Feed 的所有订阅者
@@ -661,19 +614,32 @@ class NotificationDispatcher:
                     if not effective_options.display_media:
                         effective_media_urls = None
                         effective_media_items = None
-                        effective_layout = None
-                    if effective_send_mode == SEND_MODE_LINK_ONLY:
-                        effective_content = self._build_link_only_content(
-                            entry_title=effective_title,
-                            entry_link=effective_link,
-                        )
-                        effective_media_urls = None
-                        effective_media_items = None
-                        effective_layout = None
-                    effective_layout = self._limit_original_layout_text(
-                        effective_layout,
-                        style=effective_options.style,
-                        length_limit=effective_options.length_limit,
+                    effective_layout = await _entry_text_formatter.format_layout(
+                        EntryFormatInput(
+                            title=effective_title,
+                            content=processed_entry.content
+                            if processed_entry
+                            else content,
+                            summary=processed_entry.summary
+                            if processed_entry
+                            else content,
+                            link=effective_link,
+                            author=processed_entry.author if processed_entry else "",
+                            feed_title=(
+                                processed_entry.feed_title if processed_entry else ""
+                            )
+                            or feed_title,
+                            feed_link=(
+                                processed_entry.feed_link if processed_entry else ""
+                            )
+                            or feed_link,
+                            tags=processed_entry.tags if processed_entry else (),
+                        ),
+                        effective_options,
+                        effective_layout or [],
+                        media_items=normalize_media_items(
+                            effective_media_urls, effective_media_items
+                        ),
                     )
                     if effective_layout:
                         layouts_to_cleanup.append(effective_layout)
@@ -722,6 +688,7 @@ class NotificationDispatcher:
                             effective_content=effective_content,
                             effective_send_mode=effective_send_mode,
                             effective_style=effective_options.style,
+                            merge_media=effective_options.merge_media,
                             effective_media_urls=effective_media_urls,
                             effective_media_items=effective_media_items,
                             effective_layout=effective_layout,
@@ -842,6 +809,8 @@ class NotificationDispatcher:
                         sub_id=sub.id,
                         send_mode=prepared.effective_send_mode,
                         style=prepared.effective_style,
+                        merge_media=prepared.merge_media,
+                        completion_summary=completion_summary,
                         require_active_subscription=not include_inactive_subscription_ids,
                     )
 
@@ -849,16 +818,27 @@ class NotificationDispatcher:
                     if result["ok"]:
                         history.mark_success()
                         stats["success"] += 1
+                        if result.get("summary_included"):
+                            stats["summary_included"] = True
                     elif result.get("cancelled"):
                         history.mark_stopped(
                             result.get("error", "Stopped by System or Command")
                         )
                         history.max_retries = 0
                         stats["success"] += 1
+                        stats["cancelled"] = stats.get("cancelled", 0) + 1
                     else:
                         record_error_detail(result.get("error"))
                         history.max_retries = (
-                            await self._resolve_initial_failure_max_retries()
+                            0
+                            if any(
+                                marker in str(result.get("error") or "")
+                                for marker in (
+                                    "merged_forward_not_supported",
+                                    "combined_media_not_supported",
+                                )
+                            )
+                            else await self._resolve_initial_failure_max_retries()
                         )
                         # 首次失败不增加重试计数
                         history.record_first_failure(result.get("error"))
@@ -903,6 +883,28 @@ class NotificationDispatcher:
             seen.add(marker)
             cleanup_ephemeral_generated_media_paths(layout)
 
+    async def send_entries_to_session(
+        self,
+        *,
+        target: SendTarget,
+        entries: list[SendEntry],
+        summary: str = "",
+        send_mode: int = SEND_MODE_MERGED,
+        merge_media: bool = True,
+        **kwargs,
+    ) -> dict[str, Any]:
+        """Queue a whole merged batch once, including its final summary node."""
+        return await self.send_to_session(
+            target=target,
+            content="",
+            media_urls=None,
+            entries=entries,
+            completion_summary=summary,
+            send_mode=send_mode,
+            merge_media=merge_media,
+            **kwargs,
+        )
+
     async def send_to_session(
         self,
         *,
@@ -920,6 +922,9 @@ class NotificationDispatcher:
         sub_id: int | None = None,
         send_mode: int | None = None,
         style: int = 0,
+        merge_media: bool = True,
+        entries: list[SendEntry] | None = None,
+        completion_summary: str = "",
         sender_strategy: Any = None,
         require_active_subscription: bool = False,
     ) -> dict[str, Any]:
@@ -938,6 +943,9 @@ class NotificationDispatcher:
             sub_id=sub_id,
             send_mode=send_mode,
             style=style,
+            merge_media=merge_media,
+            entries=entries,
+            completion_summary=completion_summary,
             sender_strategy=sender_strategy,
             require_active_subscription=require_active_subscription,
         )
@@ -959,6 +967,9 @@ class NotificationDispatcher:
         sub_id: int | None = None,
         send_mode: int | None = None,
         style: int = 0,
+        merge_media: bool = True,
+        entries: list[SendEntry] | None = None,
+        completion_summary: str = "",
         sender_strategy: Any = None,
         require_active_subscription: bool = False,
     ) -> dict[str, Any]:
@@ -990,6 +1001,23 @@ class NotificationDispatcher:
                 media_urls=media_urls,
                 media_items=media_items,
             )
+            effective_send_mode = self._normalize_send_mode_value(send_mode)
+            batch = list(entries) if entries is not None else None
+            if batch is not None and effective_send_mode != SEND_MODE_MERGED:
+                return {"ok": False, "error": "Batch entries require merged send mode"}
+            include_summary = (
+                bool(completion_summary) and effective_send_mode == SEND_MODE_MERGED
+            )
+            if include_summary:
+                if batch is None:
+                    batch = [
+                        SendEntry(
+                            message=content,
+                            media=normalized_media or None,
+                            layout=layout,
+                        )
+                    ]
+                batch.append(SendEntry(message=completion_summary))
 
             async def _send(job: PushJob):
                 # A poll/retry may have captured this subscription before /unpush
@@ -1014,6 +1042,7 @@ class NotificationDispatcher:
                         message=content,
                         media=normalized_media if normalized_media else None,
                         layout=layout,
+                        entries=batch,
                     ),
                     context=MessageContext(
                         channel_title=channel_title,
@@ -1021,8 +1050,9 @@ class NotificationDispatcher:
                         entry_title=entry_title,
                         entry_link=entry_link,
                         platform_name=target.platform_name or "",
-                        send_mode=self._normalize_send_mode_value(send_mode),
+                        send_mode=effective_send_mode,
                         style=style,
+                        merge_media=merge_media,
                         sender_strategy=sender_strategy,
                     ),
                 )
@@ -1068,6 +1098,7 @@ class NotificationDispatcher:
                 "ok": result.ok,
                 "error": result.detail if not result.ok else "",
                 "job_id": job_result.job_id,
+                "summary_included": bool(result.ok and include_summary),
             }
 
         except Exception as e:
@@ -1167,6 +1198,7 @@ class NotificationDispatcher:
         for history in pending:
             try:
                 target: SendTarget | None = None
+                sub = None
                 if history.source_type == "agent":
                     target = SendTarget(
                         user_id=history.user_id,
@@ -1204,9 +1236,7 @@ class NotificationDispatcher:
                     entry_link=history.entry_link,
                     feed_id=history.feed_id,
                     sub_id=history.sub_id,
-                    send_mode=(
-                        SEND_MODE_AUTO if history.source_type == "agent" else None
-                    ),
+                    **await self._history_delivery_options(history, sub),
                     require_active_subscription=history.source_type != "agent",
                 )
 
@@ -1311,7 +1341,7 @@ class NotificationDispatcher:
                 entry_link=history.entry_link,
                 feed_id=history.feed_id,
                 sub_id=history.sub_id,
-                send_mode=(SEND_MODE_AUTO if history.source_type == "agent" else None),
+                **await self._history_delivery_options(history),
             )
 
             error_msg = result.get("error", "")
@@ -1353,6 +1383,28 @@ class NotificationDispatcher:
             )
             await self._push_history_repo.save(history)
             return {"ok": False, "error": str(e), "history": history}
+
+    async def _history_delivery_options(
+        self, history, subscription=None
+    ) -> dict[str, Any]:
+        """Retried content keeps its snapshot and uses the current send policy."""
+        if history.source_type == "agent":
+            return {"send_mode": SEND_MODE_DIRECT, "merge_media": True}
+        if subscription is None:
+            subscription = await self._subscription_repo.get_by_id(
+                int(history.sub_id or 0)
+            )
+        user = (
+            await self._user_repo.get_by_id(history.user_id)
+            if self._user_repo is not None
+            else None
+        )
+        options = self._resolve_effective_push_options(subscription, user)
+        return {
+            "send_mode": self._resolve_send_mode(subscription, user),
+            "merge_media": options.merge_media,
+            "style": options.style,
+        }
 
     async def _target_from_history(
         self,

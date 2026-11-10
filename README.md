@@ -9,7 +9,7 @@
 - 原版定时调度、条件 GET、首次跳过历史、指纹去重与成功投递幂等。
 - 原版会话发送队列、平台适配、图文媒体处理、失败降级与重试。
 - 基础管理页面：订阅、用户、Feed、推送历史、默认设置和数据管理。
-- SQLite、原版 SQLModel 模型、数据库迁移与 Repository。
+- SQLite、基于原版扩展的 SQLModel 模型、数据库迁移与 Repository。
 
 已移除 AI 内容处理运行时、LLM 工具注册、Agent XML 即时推送、RSSHub Routes 知识库及对应命令、配置、API 和管理页面。普通 HTML 清洗、图片提取和格式化仍保留。
 
@@ -45,7 +45,7 @@ python -m pip install -r data/plugins/astrbot_plugin_rsshub/requirements.txt
 /push 1
 ```
 
-ID `1` 请替换为列表方括号中的实际订阅 ID。也可以 `/sub https://你的实例/163/ds/用户ID`。新订阅默认启用；`/feed 1 3` 由管理员即时发送最新 3 条，从新到旧排列。它允许重复查看，不改变自动推送开关或去重水位。本版不提供之前独立实现的 `/动态`、`/rss_on` 或内置名称快捷源。
+ID `1` 请替换为列表方括号中的实际订阅 ID。也可以 `/sub https://你的实例/163/ds/用户ID`。新订阅默认启用；`/feed 1 3` 由管理员将最新 3 条按从新到旧排列，连同末尾汇总发送为一个合并转发包（当前仅 OneBot 支持）。它允许重复查看，不改变自动推送开关或去重水位。本版不提供之前独立实现的 `/动态`、`/rss_on` 或内置名称快捷源。
 
 `/push`、`/unpush` 持续启停自己在当前会话的订阅，支持 `1,3,4` 或 `all`。`/push_status` 只显示当前正在运行或排队的发送任务；`/push_cancel` 取消本次任务，后续更新仍会推送。管理员权限用于 `/feed`、测试推送、全局删除和全量导出。
 
@@ -64,9 +64,9 @@ ID `1` 请替换为列表方括号中的实际订阅 ID。也可以 `/sub https:
 
 完整说明见 [命令](docs/usage/commands.md)、[配置](docs/usage/configuration.md)、[管理页面](docs/usage/plugin-pages.md)。
 
-`/sub_profile set sub 1 style 2` 修改已有订阅，`/sub_profile set user style 2` 设置该用户的默认排版。发送选项按订阅 → 用户 → 全局默认逐字段继承，`-100` 恢复继承。`/sub_session set style 2` 仅作为当前会话**以后新建订阅**的模板，不修改已有订阅。实际抓取间隔请设订阅 `interval`；用户 `interval` 当前不参与调度。全局默认值在管理页面保存后需要重载插件。
+`/sub_profile set sub 1 style 2` 修改已有订阅，`/sub_profile set user style 2` 设置该用户的默认排版。发送选项按订阅 → 用户 → 全局默认逐字段继承，`-100` 恢复继承。`/sub_session set style 2` 仅作为当前会话**以后新建订阅**的模板，不修改已有订阅。实际抓取间隔请设订阅 `interval`；用户 `interval` 当前不参与调度。普通和 `/feed` 显示配置独立继承各自的全局默认值；管理页面保存显示设置后立即应用，监控间隔需重载插件。
 
-排版 `0` 自动、`1` RSSRT、`2` 原始顺序中，RSSRT 当前与自动共用链路；原始顺序仅在 OneBot、QQ Official、Weixin 专用发送器有对应布局时生效，详细显示边界见[排版说明](docs/usage/configuration.md#排版-style-实际行为)。旧 `/sub_state`、`/activate_subs`、`/deactivate_subs`、`/sub_status`、`/sub_stop` 保留兼容入口。
+普通发送模式为 `1` 直接发送、`2` 合并转发；`/feed` 固定合并转发。排版 `0` 自定义、`2` 原始顺序，两者均应用显示开关。所有显示开关统一 `0` 禁用、`1` 启用；用户/订阅可设 `-100` 继承。`feed_display_title` 等手动配置与普通 `display_title` 独立；`merge_media` 控制一条内容的文字和媒体是否合到同一消息或转发节点。RSS 标签来自源条目，不是订阅管理标签。详见[配置说明](docs/usage/configuration.md)。旧 `/sub_state`、`/activate_subs`、`/deactivate_subs`、`/sub_status`、`/sub_stop` 保留兼容入口。
 
 ## 数据与兼容
 
@@ -80,7 +80,7 @@ AstrBot/data/plugin_data/astrbot_plugin_rsshub/rsshub.db
 
 `handlers`、`handlers_mode`、`handler_trace` 等历史字段保留以维持结构兼容。旧值不会触发处理器，新的推送记录不产生 AI trace；配置入口拒绝处理器选项，导入旧 TOML 会忽略处理器字段并提示，导出不携带它们。保留 `raw_xml` 用于记录原始内容，它不代表 AI 功能。
 
-本版没有执行任何数据迁移操作；原版自带的数据库结构升级仍在插件启动时运行。工作区的旧 `yuma_yys` 目录保持原样，不进入安装包。
+原版数据库升级机制继续在插件启动时运行；新增的 `V3_display_profiles` 升级会补齐 `merge_media` 和独立 `feed_` 显示字段，并一次性转换旧选项值，继承值保留。当前全局配置和 TOML 导出为版本 3。这里的数据库升级不读取 NB2 或独立 Lite 数据；工作区旧 `yuma_yys` 目录保持原样，不进入安装包。详细转换见[配置兼容说明](docs/usage/configuration.md#旧配置兼容)。
 
 ## 开发、验证与打包
 

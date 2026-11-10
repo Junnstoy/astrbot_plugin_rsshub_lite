@@ -206,9 +206,10 @@ export async function getPluginSettings() {
 
 export async function setPluginSettings({
   subscription_defaults = {},
+  feed_defaults = {},
   history_retention_days,
 } = {}) {
-  const payload = { subscription_defaults };
+  const payload = { subscription_defaults, feed_defaults };
   if (history_retention_days !== undefined) {
     payload.history_retention_days = history_retention_days;
   }

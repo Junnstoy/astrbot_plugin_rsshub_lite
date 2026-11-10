@@ -25,6 +25,15 @@ SUBSCRIPTION_EXPORT_INT_FIELDS = {
     "display_entry_tags",
     "style",
     "display_media",
+    "merge_media",
+    "feed_length_limit",
+    "feed_display_author",
+    "feed_display_via",
+    "feed_display_title",
+    "feed_display_entry_tags",
+    "feed_display_media",
+    "feed_style",
+    "feed_merge_media",
     "interval",
 }
 

@@ -27,3 +27,13 @@ class UserDTO:
     display_media: int
     created_at: datetime
     updated_at: datetime
+
+    merge_media: int = -100
+    feed_length_limit: int = -100
+    feed_display_author: int = -100
+    feed_display_via: int = -100
+    feed_display_title: int = -100
+    feed_display_entry_tags: int = -100
+    feed_display_media: int = -100
+    feed_style: int = -100
+    feed_merge_media: int = -100

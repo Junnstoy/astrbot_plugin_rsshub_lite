@@ -20,3 +20,4 @@ class EntryContentContext:
     media_urls: tuple[str, ...] = ()
     media_items: tuple[tuple[str, str], ...] = ()
     layout: tuple[LayoutFragment, ...] = ()
+    tags: tuple[str, ...] = ()

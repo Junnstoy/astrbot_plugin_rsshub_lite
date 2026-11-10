@@ -122,8 +122,18 @@ class MessageContext:
     platform_name: str = ""
     send_mode: int | None = None
     style: int = 0
+    merge_media: bool = True
     sender_strategy: Any = None
     event: Any = None  # AstrBot event object for platform-specific features (e.g., NapCat stream)
+
+
+@dataclass
+class SendEntry:
+    """Formatted content and media for one merged-forward entry."""
+
+    message: str = ""
+    media: list[tuple[str, str]] | None = None
+    layout: list[LayoutFragment] | None = None
 
 
 @dataclass
@@ -138,6 +148,7 @@ class SendRequest:
     media: list[tuple[str, str]] | None = None
     prepared_media: list[PreparedMedia] | None = None
     layout: list[LayoutFragment] | None = None
+    entries: list[SendEntry] | None = None
 
 
 class BaseMessageSender(Protocol):

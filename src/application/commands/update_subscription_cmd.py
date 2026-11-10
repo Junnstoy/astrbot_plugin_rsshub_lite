@@ -6,6 +6,7 @@
 
 from ...domain.repositories.subscription_repository import SubscriptionRepository
 from ...infrastructure.config import validate_interval_value
+from ...shared.profile_options import PROFILE_OPTION_FIELDS, validate_profile_value
 from ..dto.result_dto import CommandResult
 from ..dto.subscription_dto import SubscriptionDTO
 
@@ -75,7 +76,20 @@ class UpdateSubscriptionCommand:
                 except ValueError as exc:
                     return CommandResult(success=False, message=str(exc))
                 continue
-            normalized_options[key] = value
+            if key in {*PROFILE_OPTION_FIELDS, "notify"}:
+                try:
+                    normalized_options[key] = validate_profile_value(key, value)
+                except ValueError as exc:
+                    return CommandResult(success=False, message=str(exc))
+            elif key == "state":
+                try:
+                    normalized_options[key] = validate_profile_value(
+                        "notify", value, allow_inherit=False
+                    )
+                except ValueError as exc:
+                    return CommandResult(success=False, message=str(exc))
+            else:
+                return CommandResult(success=False, message=f"未知订阅选项: {key}")
 
         subscription = await self._subscription_repo.update_options(
             sub_id, user_id, **normalized_options
@@ -98,6 +112,10 @@ class UpdateSubscriptionCommand:
                 target_session=subscription.target_session,
                 platform_name=subscription.platform_name,
                 state=subscription.state,
+                **{
+                    key: getattr(subscription, key, -100)
+                    for key in ("interval", "notify", *PROFILE_OPTION_FIELDS)
+                },
                 created_at=subscription.created_at,
                 updated_at=subscription.updated_at,
             ),

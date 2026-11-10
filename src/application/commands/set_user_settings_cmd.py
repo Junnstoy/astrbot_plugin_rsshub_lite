@@ -10,6 +10,12 @@ from typing import Any
 from ...domain.repositories.user_repository import UserRepository
 from ...infrastructure.config import MAX_INTERVAL_MINUTES, validate_interval_value
 from ...shared.constants import INHERIT_VALUE
+from ...shared.profile_options import (
+    FEED_PROFILE_FIELDS,
+    PROFILE_OPTION_FIELDS,
+    TOGGLE_FIELDS,
+    validate_profile_value,
+)
 from ..dto.result_dto import CommandResult
 
 # 设置选项的合法值范围
@@ -17,15 +23,26 @@ VALID_SETTINGS = {
     "state": (-1, 1),
     "interval": (1, MAX_INTERVAL_MINUTES),  # 分钟
     "notify": (0, 1),
-    "send_mode": (-1, 1),  # -1=仅链接, 0=自动, 1=直接发送
+    "send_mode": (1, 2),
     "length_limit": (0, 10000),
-    "display_author": (-1, 1),
-    "display_via": (-2, 1),
-    "display_title": (-1, 1),
-    "display_entry_tags": (-1, 1),
-    "style": (0, 2),  # 0=自动, 1=RSSRT, 2=原始顺序
-    "display_media": (-1, 1),
+    "display_author": (0, 1),
+    "display_via": (0, 1),
+    "display_title": (0, 1),
+    "display_entry_tags": (0, 1),
+    "style": (0, 2),
+    "display_media": (0, 1),
+    "merge_media": (0, 1),
 }
+VALID_SETTINGS.update(
+    {
+        key: (0, 10000)
+        if key == "feed_length_limit"
+        else (0, 2)
+        if key == "feed_style"
+        else (0, 1)
+        for key in FEED_PROFILE_FIELDS
+    }
+)
 INHERITABLE_SETTINGS = set(VALID_SETTINGS) - {"state"}
 STRING_SETTINGS = {"default_target_session"}
 REMOVED_SETTINGS = {
@@ -85,10 +102,7 @@ class SetUserSettingsCommand:
                     message=f"选项 {option_key} 已移除。",
                 )
 
-            if (
-                option_key not in VALID_SETTINGS
-                and option_key not in STRING_SETTINGS
-            ):
+            if option_key not in VALID_SETTINGS and option_key not in STRING_SETTINGS:
                 return CommandResult(
                     success=False,
                     message=f"未知配置项: {option_key}",
@@ -98,11 +112,19 @@ class SetUserSettingsCommand:
                 parsed_value = str(raw_value).strip() or None
             else:
                 try:
-                    parsed_value = int(raw_value)
-                except (ValueError, TypeError):
+                    parsed_value = (
+                        validate_profile_value(option_key, raw_value)
+                        if option_key in {*PROFILE_OPTION_FIELDS, "notify"}
+                        else int(raw_value)
+                    )
+                except (ValueError, TypeError) as exc:
                     return CommandResult(
                         success=False,
-                        message=f"选项 {option_key} 需要数字值",
+                        message=(
+                            str(exc)
+                            if option_key in {*PROFILE_OPTION_FIELDS, "notify"}
+                            else f"选项 {option_key} 需要数字值"
+                        ),
                     )
 
                 if option_key in INHERITABLE_SETTINGS and parsed_value == INHERIT_VALUE:
@@ -114,6 +136,11 @@ class SetUserSettingsCommand:
                             allow_inherit=True,
                             field_name="interval",
                         )
+                    except ValueError as exc:
+                        return CommandResult(success=False, message=str(exc))
+                elif option_key in {*PROFILE_OPTION_FIELDS, "notify"}:
+                    try:
+                        parsed_value = validate_profile_value(option_key, raw_value)
                     except ValueError as exc:
                         return CommandResult(success=False, message=str(exc))
                 elif option_key in VALID_SETTINGS:
@@ -135,7 +162,13 @@ class SetUserSettingsCommand:
             def fmt(val):
                 if val is None:
                     return "未设置"
-                if isinstance(val, bool) or val in (0, 1, -100, -1, -2):
+                if val == INHERIT_VALUE:
+                    return "继承"
+                if option_key == "send_mode":
+                    return {1: "直接发送", 2: "合并消息"}.get(val, str(val))
+                if option_key in {"style", "feed_style"}:
+                    return {0: "自定义", 2: "原始"}.get(val, str(val))
+                if option_key in TOGGLE_FIELDS:
                     val_map = {
                         0: "禁用",
                         1: "启用",

@@ -70,8 +70,18 @@ Dashboard 的 ID/URL 筛选 UI 使用紧凑筛选栏：关键词框绑定 `keywo
 | 导出文件下载 | `GET /data-management/exports/download` | 文件标识 | 返回可下载文件响应。 | 仅限插件导出目录。 |
 | 导出文件删除 | `POST /data-management/exports/delete` | 文件标识 | 删除单个导出文件。 | 只管理插件导出目录。 |
 | 导出文件清空 | `POST /data-management/exports/clear` | 无 | 清空导出目录。 | 不影响 cache 和数据库。 |
-| 插件设置读取 | `GET /plugin-settings` | 无 | 读取启动级和默认订阅级配置。 | 不承担订阅创建、导入、导出。 |
-| 插件设置保存 | `POST /plugin-settings` | 设置 payload | 保存允许编辑的插件设置。 | 推送历史自动清理范围不通过这里保存。 |
+| 插件设置读取 | `GET /plugin-settings` | 无 | 返回 `subscription_defaults` 与 `feed_defaults` 两组配置。 | 不承担订阅创建、导入、导出。 |
+| 插件设置保存 | `POST /plugin-settings` | 两组 defaults payload | 持久化后调用同一 dispatcher 的 `apply_defaults(normal, feed)`，后续消息立即使用新显示默认值。 | 监控间隔仍需重载；历史清理范围不通过这里保存。 |
+
+## 推送配置字段契约
+
+`GET /subscriptions` 与 `GET /users/detail` 返回完整的普通及手动配置字段，编辑保存经 `subscriptions/update`、`users/update` 原样传给对应应用命令验证并持久化。字段清单复用 `src/shared/profile_options.py`，避免界面保存时丢弃手动配置。
+
+普通 `send_mode` 为 `1` 直接、`2` 合并转发；普通与手动 `style` 为 `0` 自定义、`2` 原始顺序。全局显示开关为 bool；用户和订阅为 `-100` 继承、`0` 禁用、`1` 启用。用户/订阅的正常字段有 `merge_media`，手动字段为 `feed_` 前缀加 `length_limit`、`display_author`、`display_via`、`display_title`、`display_entry_tags`、`display_media`、`style`、`merge_media`。手动没有 send_mode。
+
+`plugin-settings` 的 `subscription_defaults` 写入 `global_config`；`feed_defaults` 写入同名全局配置块，内部字段不带 `feed_` 前缀。两个组都是对象，非法形状拒绝保存。保存时保留全局 `config_version`，避免将当前 `0=禁用` 再次作为旧版自动值迁移。显示热更新通过 `NotificationDispatcher.apply_defaults` 完成，不重建队列或已准备消息。
+
+前端 `js/push-options.js` 定义字段清单，`components/shared/push-settings.js` 生成全局/订阅/用户的普通和手动表单。全局使用 checkbox；可继承表单使用三态 select；所有 API payload 都经过共享表单转换，长度继承控件不会覆盖另一组字段。
 
 ## 推送历史返回字段
 

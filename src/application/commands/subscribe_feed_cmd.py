@@ -11,6 +11,7 @@ from ...domain.repositories.user_repository import UserRepository
 from ...domain.value_objects.feed_url import FeedUrl
 from ...infrastructure.config import FeedFetchSettings, validate_interval_value
 from ...infrastructure.utils import get_logger
+from ...shared.profile_options import PROFILE_OPTION_FIELDS, validate_profile_value
 from ..dto.result_dto import CommandResult
 from ..dto.subscription_dto import SubscriptionDTO
 from ..ports import FeedFetcherFactory
@@ -234,15 +235,17 @@ class SubscribeFeedCommand:
                                 allow_inherit=False,
                                 field_name="interval",
                             )
-                        else:
-                            update_payload[key] = int(raw_value)
+                        elif key in {*PROFILE_OPTION_FIELDS, "notify"}:
+                            update_payload[key] = validate_profile_value(key, raw_value)
                     except (ValueError, TypeError):
                         pass
             if update_payload:
                 try:
-                    await self._subscription_repo.update_options(
+                    updated = await self._subscription_repo.update_options(
                         subscription.id, user_id, **update_payload
                     )
+                    if updated is not None:
+                        subscription = updated
                 except ValueError as exc:
                     return CommandResult(success=False, message=str(exc))
 
@@ -263,6 +266,10 @@ class SubscribeFeedCommand:
                 target_session=subscription.target_session,
                 platform_name=subscription.platform_name,
                 state=subscription.state,
+                **{
+                    key: getattr(subscription, key, -100)
+                    for key in ("interval", "notify", *PROFILE_OPTION_FIELDS)
+                },
                 created_at=subscription.created_at,
                 updated_at=subscription.updated_at,
             ),

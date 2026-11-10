@@ -15,7 +15,7 @@
 | `/unsub` | 支持 ID 和 URL 混合批量取消。 | 不要只支持单 ID。 |
 | `/sub_list [page] [page_size]` | 只展示当前用户、当前会话订阅；默认页码 1、每页 5 条，每页允许 1～100。 | 保留两个参数的完整解析，ID 是方括号中的订阅 ID。 |
 | `/push`、`/unpush` | 当前用户、当前会话内，以订阅 ID/逗号列表/显式 `all` 持久化启停。停用时取消可归属所选订阅的任务。 | 新命令空参数不修改数据；不以 Feed ID 取消其他用户的任务。 |
-| `/feed <订阅ID> <N>` | 管理员读取当前会话订阅源，按有效发布时间降序即时发送最多 N 条；不足时发全部并提示。 | 不改变订阅开关、Feed 游标、去重水位或自动历史；继承订阅所有者的显示设置。 |
+| `/feed <订阅ID> <N>` | 管理员读取当前会话订阅源，按有效发布时间降序选择最多 N 条，与末尾汇总组成一个合并转发包；不足时发全部并提示。 | 不改变订阅开关、Feed 游标、去重水位或自动历史；继承订阅及所有者的 feed_* 显示设置；固定合并转发。 |
 | `/sub_export [all]` | 保留管理员校验。 | 不绕过 admin guard。 |
 | `/sub_import` | 支持 TOML 路径和上传等待流程。 | 不要移除上传等待监听。 |
 | `/sub_test <ID\|URL>` | 真实推送最新条目，不是预览；聊天命令不接受额外范围参数。 | 不要恢复“测试推送未进入正式链路”的泛化误判。 |
@@ -25,7 +25,7 @@
 
 旧 `sub_state`、`activate_subs`、`deactivate_subs` 兼容入口保留；旧批量命令空参数仍按当前会话 `all` 处理。新的帮助主入口推荐 `push`、`unpush`。命令用法见 [`commands.md`](../usage/commands.md)。
 
-`PushFeedCommand` 使用 `fetch_feed_entries` 读端口、`EntryTextFormatter` 和 `send_to_session`，逐条进入现有发送队列。手动请求不受订阅 `state` 或有效 `notify` 阻挡，不持久化推送历史，因此可重复发送、没有自动失败重试，也不会让后续自动推送误判已送达。源中无有效发布时间的条目放在有时间的条目后；等时和无时间条目保持源顺序。单条失败会继续其余条目，队列取消结果会停止本次循环；抓取阶段及尚未入队的未来条目不属于可取消队列任务。
+`PushFeedCommand` 使用 `fetch_feed_entries` 读端口、`EntryTextFormatter.format_layout` 和 `send_entries_to_session`，将 N 条及末尾汇总一次入队。手动请求不受订阅 `state` 或 `notify` 阻挡，不持久化推送历史，因此可重复发送、没有自动失败重试，也不会让后续自动推送误判已送达。无有效时间的条目放在有时间的条目后；等时和无时间条目保持源顺序。合并转发目前只在 OneBot 支持，其他平台返回不支持；整批取消仅作用于已入队任务，抓取和排版阶段尚无队列任务。
 
 ## 已移除的 AI 入口
 
@@ -37,10 +37,10 @@
 
 | 主题 | 当前语义 | 备注 |
 | --- | --- | --- |
-| 发送配置继承 | 订阅 → 用户 → 启动时全局默认，逐字段解析且仅 `-100` 继承 | 涵盖 notify、send_mode、length_limit、display_*、style；不包含 interval、state、title、tags 或目标。 |
+| 发送配置继承 | 订阅 → 用户 → 对应全局默认，逐字段解析且仅 `-100` 继承 | 普通字段使用 global_config；feed_* 字段使用 feed_defaults，绝不回退到普通字段。state、interval、管理title/tags和目标不在显示继承链。 |
 | 会话默认值 | `rsshub_session_defaults_<unified_msg_origin>` 插件 KV；只在 `/sub` 新建时复制到订阅 | 模板不是第四层动态继承，不覆盖已有订阅；模板显式值会遮蔽用户默认值。 |
 | 调度间隔 | 正数订阅 interval 优先，否则全局默认间隔 | `RSSScheduler._load_due_subscriptions` 不查询 UserORM，用户 interval 不参与调度。 |
-| 设置生效 | 用户与订阅选项后续分发读取；全局默认由 dispatcher/scheduler 在初始化时捕获 | Plugin Pages 保存全局配置不热替换现有服务，重载后完整生效；已入队消息不重新排版。 |
+| 设置生效 | 用户与订阅选项后续准备时读取；全局显示默认通过 apply_defaults 热更新 | 监控间隔仍为 scheduler 启动快照；已入队消息不重新排版。 |
 | 配置查询 | profile get user 返回保存值；session get 返回模板值 | 不是针对某个订阅计算后的最终值；没有 profile get sub 命令。 |
 | 旧处理器字段 | 原版数据库字段与迁移保留，现有 JSON 配置不再执行 | 聊天命令、Web UI 和 TOML 不提供处理器配置入口。 |
 | 旧翻译字段 | `translate`、`translate_target_lang` 保持移除 | 翻译不再是应用层内置入口。 |
@@ -50,15 +50,15 @@
 
 订阅 `state=0/1` 控制定时调度；`notify=0` 在分发阶段写 `skipped`，不会取消已准备的任务，`push` 也不会强制覆盖它。用户 `state`、`default_target_session` 可保存但当前主轮询与聊天 `/sub` 不读取它们进行停推或目标绑定；投递目标来自订阅自身的 `target_session`、`platform_name`。不要把用户状态与 AstrBot 管理员权限混用。
 
-## 格式化与 style 的实际分工
+## 格式化、发送模式和媒体组合
 
-`NotificationDispatcher._resolve_effective_push_options` 解析发送显示项，`_resolve_send_mode` 独立解析发送模式。`EntryTextFormatter.format_entry` 负责 HTML 清洗后的标题、正文、源条目标签、来源及作者后缀，**没有 style 分支**。`style=1`（RSSRT）目前仅保留枚举和配置映射，运行链路与 `style=0` 相同。
+`NotificationDispatcher._resolve_effective_push_options(profile="push"|"feed")` 解析两套独立显示字段，`_resolve_send_mode` 仅解析普通发送模式。`apply_defaults(subscription_defaults, feed_defaults)` 更新两套运行时默认值；Web API 持久化后直接调用该方法。
 
-`style=2` 的差异在 OneBot、QQ Official、Weixin sender：当 `request.layout` 非空时，以 `_layout_to_components` 还原文本/媒体片段顺序，通过 `_send_components_in_order` 发送。OneBot、QQ Official 可以将图片与后随文本组合，Weixin 分开发送。Telegram 和默认 sender 没有这一专用分支。原始顺序只保证可解析的内容顺序，不复现网页样式；通常也不使用 formatter 另外添加的标题和来源后缀。
+普通 `send_mode=1/2` 对应直接消息/合并转发；手动 `/feed` 固定 `2`，无 feed_send_mode。合并转发仅 OneBot 支持，其他平台明确返回不支持，不静默降级。`merge_media=1` 将单条 entry 的文字媒体放入同一消息或 Node；`0` 按片段拆分消息/Node，与 send_mode 相互独立。
 
-普通 formatter 中 `display_title`、`display_author` 只对 `-1` 禁用做分支，`0/1` 均显示已有内容；`display_via=-2` 提前返回空来源后缀，会一起隐藏位于后缀内的作者。`display_entry_tags` 与 `display_media` 在用户/订阅整数选项中均以 `-1` 禁用，不能用 `0=false` 理解。
+`EntryTextFormatter.format_layout` 为两种 style 统一应用 bool 显示开关。自定义 `0` 输出作者、标题、清洗后的正文、源条目标签和来源，再附媒体；原始 `2` 在作者/标题与标签/来源之间保留可解析的正文图文顺序。源无元数据时不生成内容。`display_title=0` 只隐藏额外标题，不删除正文中可能相同的文字；`display_via=0` 不再连带隐藏作者。
 
-`display_media` 关闭会清空媒体和 layout，`send_mode=-1` 会改为标题+链接并清空媒体/layout。普通 `length_limit` 限制正文；原始 layout 则由 `_limit_original_layout_text` 累计截断文本片段。用户可执行示例和完整边界见[配置说明](../usage/configuration.md#排版-style-实际行为)。
+全局 display_*、merge_media 使用 bool；用户/订阅使用 `-100/0/1`。`length_limit` 只作用于正文，原始顺序累计限制正文文本片段；关闭媒体过滤媒体片段而保留文字。RSS 条目标签来自 Entry.tags，订阅 tags 是独立管理元数据。RSSRT、自动发送和仅链接选项退出当前配置契约，旧值在存储兼容层迁移。
 
 ## 推送历史与重试
 

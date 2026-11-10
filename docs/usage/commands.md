@@ -30,14 +30,16 @@
 
 | 命令 | 别名 | 说明 |
 | --- | --- | --- |
-| `/feed <订阅ID> <N>` | `/立即推送` | 管理员抓取当前会话中该订阅的最新 N 条，按从新到旧顺序发送到当前会话。两个参数都必填。 |
+| `/feed <订阅ID> <N>` | `/立即推送` | 管理员抓取当前会话中该订阅的最新 N 条，按从新到旧顺序组成一个合并转发包发到当前会话，末尾包含汇总。两个参数都必填；当前仅支持 OneBot。 |
 | `/push_status` | `/sub_status`、`/推送状态`、`/任务状态` | 查看当前会话正在运行、排队的发送任务及 job ID、Feed ID。 |
 | `/push_cancel [job_id\|feed_id\|all]` | `/sub_stop`、`/rss_stop`、`/停止RSS`、`/取消推送任务` | 取消本次任务；无参数取消当前运行任务，`all` 取消当前会话全部任务。 |
 | `/sub_test <订阅ID或URL>` | `/测试订阅` | 保留的管理员诊断入口，真实推送最新 1 条；使用原有测试分发链路。 |
 
 `/feed` 接收订阅 ID，不接收 Feed ID、URL 或名称；N 为正整数。如果源只有 4 条，`/feed 12 10` 会发送可用的 4 条并提示数量不足。按发布时间降序排列；缺少时间的条目排在有时间的条目之后，相同或缺少时间时保留源顺序。
 
-`/feed` 是一次明确的手动发送：即使订阅已停用或 `notify=0`，仍可发送；不会改变自动推送开关、轮询时间、Feed 去重水位或自动推送成功记录。重复执行会再次发送，失败也不进入自动重试队列。排版继承该订阅及其所属用户的配置，消息发到执行命令的当前会话。
+`/feed` 是一次明确的手动发送：即使订阅已停用或 `notify=0`，仍可发送；不会改变自动推送开关、轮询时间、Feed 去重水位或自动推送成功记录。重复执行会再次发送，失败也不进入自动重试队列。显示配置按订阅 `feed_*` → 订阅所属用户 `feed_*` → 全局 `feed_defaults` 继承，不使用普通推送显示设置。消息发到执行命令的当前会话，所选条目与汇总放在同一个合并转发包中。
+
+部分条目排版失败时，其他可用条目仍一起发送，末尾汇总说明成功/失败数量；成功发送后不再在包外重复汇总。
 
 ```text
 /feed 12 5
@@ -48,7 +50,7 @@
 
 `/push_status` 没有任务，通常只代表此刻没有正在发送的消息。自动推送开关请看 `/sub_list` 的 `✓` / `✗`。`/push_cancel` 不会停用订阅，后续有更新仍会调度；长期停止请用 `/unpush`。其中纯数字取消目标是 **Feed ID**，请从 `/push_status` 读取。
 
-取消针对已登记在发送队列中的任务。`/feed` 抓取、格式化或两条发送之间尚未入队时，可能没有可取消任务；正在发送的手动任务取消成功后，剩余条目会停止发送。已经发送到平台的消息不会撤回。
+取消针对已登记在发送队列中的任务。`/feed` 抓取和格式化阶段尚未入队，可能没有可取消任务；整个手动批次入队后可按一个任务取消。已经发送到平台的消息不会撤回。
 
 ## `sub_profile`：现有订阅与用户默认配置
 
@@ -60,12 +62,12 @@
 
 中文命令组为 `/订阅配置 设置 ...`、`/订阅配置 获取 ...`。目前没有 `/sub_profile get sub` 查询入口；订阅详细配置可在管理页面查看。
 
-发送选项逐字段按 **订阅 → 用户 → 全局默认** 解析，仅 `-100` 表示继续继承。用户默认值不会覆盖订阅已设置的值。常用示例：
+普通和手动 `/feed` 的发送选项分别按 **订阅 → 用户 → 对应全局默认** 逐字段解析，仅 `-100` 表示继续继承。两套显示配置互不回退，用户默认值不会覆盖订阅已设置的值。常用示例：
 
 ```text
 /sub_profile set user length_limit 800
-/sub_profile set user display_media -1
-/sub_profile set sub 12 display_media 0
+/sub_profile set user display_media 0
+/sub_profile set sub 12 display_media 1
 /sub_profile set sub 12 style 2
 /sub_profile get user
 /sub_profile get user length_limit
@@ -82,20 +84,30 @@
 
 ### 可用选项
 
-以下发送选项可用于 `set sub`、`set user` 和 `sub_session set`。订阅、用户字段以及会话的新订阅模板均可用 `-100` 继续继承；`interval` 的例外见表下说明。
+普通显示选项和手动 `feed_` 显示选项均支持用户、订阅级 `-100` 继承；新建默认全继承。`interval` 的例外见表下说明。
 
-| 选项 | 数字值 | 实际作用 |
+| 选项 | 值 | 实际作用 |
 | --- | --- | --- |
-| `notify` | `0` 关闭、`1` 开启 | 自动分发时关闭会跳过整条消息并记 `skipped`，不是静音发送。 |
-| `send_mode` | `-1` 仅链接、`0` 自动、`1` 直接发送 | 仅链接只发条目标题和链接；自动模式可触发平台策略，如 Telegram Telegraph。 |
-| `length_limit` | `0` 不限制，正整数限制长度 | 普通排版限制正文，标题和来源不计入；用户配置最大 10000。 |
-| `display_title` | `-1` 隐藏、`0` 自动、`1` 强制 | 普通排版中 `0`、`1` 都显示已有标题，缺失标题不会生成。 |
-| `display_author` | `-1` 隐藏、`0` 自动、`1` 强制 | 普通排版中 `0`、`1` 都显示已有作者，通常在来源后缀内。 |
-| `display_via` | `-2` 完全隐藏、`-1` 仅链接、`0` 自动、`1` 强制 | `-2` 隐藏整个来源后缀，也连同后缀中的作者一起隐藏。 |
-| `display_entry_tags` | `-1` 隐藏、`0` 显示 | 显示源条目自带的标签；不是订阅管理标签。 |
-| `display_media` | `-1` 禁用、`0` 启用 | 关闭会移除媒体及原始图文布局。 |
-| `style` | `0` 自动、`1` RSSRT、`2` 原始顺序 | 当前 RSSRT 与自动走相同链路；原始顺序的支持平台和显示边界见[配置说明](./configuration.md#排版-style-实际行为)。 |
-| `interval` | 正整数，单位分钟 | 设置实际抓取频率请使用订阅级字段；必须不小于 `basic_config.minimal_interval`。 |
+| `notify` | `0` 关闭、`1` 开启 | 普通自动分发时关闭会跳过整条消息并记 `skipped`；不是静音发送。 |
+| `send_mode` | `1` 直接发送、`2` 合并转发 | 仅用于普通推送。合并转发目前仅支持 OneBot，其他平台明确返回不支持。 |
+| `length_limit` | `0` 不限，正整数限制长度 | 限制正文，作者、标题、标签、来源不计入；最大 10000。 |
+| `display_media` | `0` 禁用、`1` 启用 | 控制图片、音频、视频等媒体，文字保留。 |
+| `merge_media` | `0` 禁用、`1` 启用 | 一条内容的文字与媒体放入同一消息/转发节点；禁用时分别投递。 |
+| `display_author` | `0` 禁用、`1` 启用 | 控制独立作者段；源没有作者时不补写。 |
+| `display_via` | `0` 禁用、`1` 启用 | 控制文章链接和 Feed 来源后缀；不影响作者开关。 |
+| `display_title` | `0` 禁用、`1` 启用 | 控制额外的条目标题；不删除正文自带的文字。 |
+| `display_entry_tags` | `0` 禁用、`1` 启用 | 控制 RSS 条目自带分类标签，不是订阅管理标签。 |
+| `style` | `0` 自定义、`2` 原始顺序 | 两者均遵循全部显示开关；区别在正文图文顺序。 |
+| `interval` | 正整数，单位分钟 | 实际抓取频率使用订阅级字段；不小于 `basic_config.minimal_interval`。 |
+
+手动 `/feed` 固定合并转发，无 `feed_send_mode`。它有独立的八个显示选项：`feed_length_limit`、`feed_display_media`、`feed_merge_media`、`feed_display_author`、`feed_display_via`、`feed_display_title`、`feed_display_entry_tags`、`feed_style`。值规则与上表对应字段相同。例如普通推送不显示标题，手动推送仍显示：
+
+```text
+/sub_profile set sub 12 display_title 0
+/sub_profile set sub 12 feed_display_title 1
+/sub_profile set sub 12 feed_merge_media 0
+/feed 12 3
+```
 
 **监控间隔例外：** 当前调度器只读取订阅的 `interval`；订阅为 `-100` 时使用全局间隔，**不读取用户 `interval`**。`set user interval` 可以保存，但不会改变抓取频率。会话 `interval` 会复制到以后新建的订阅，且不接受 `-100`。
 
@@ -122,15 +134,16 @@
 ```text
 /sub_session set interval 15
 /sub_session set style 2
-/sub_session set display_media 0
+/sub_session set display_media 1
+/sub_session set feed_display_title 0
 /sub_session get
 /sub_session get style
 /sub /163/ds/5b00c224c7de46d98d33a6e0722ce28f
 ```
 
-此后新建的订阅会保存 `interval=15`、`style=2`、`display_media=0`。即使之后改用户 `style`，这些订阅仍保持自己的 `style=2`，直到用 `sub_profile set sub <ID> style -100` 恢复继承。
+此后新建的订阅会保存 `interval=15`、`style=2`、`display_media=1`，手动推送标题另存为 `feed_display_title=0`。即使之后改用户 `style`，这些订阅仍保持自己的 `style=2`，直到用 `sub_profile set sub <ID> style -100` 恢复继承。
 
-会话模板支持上表发送选项及 `title`、`tags`，不支持 `state`、`target_session` 或 `platform_name`。命令没有删除单个模板键的入口；发送选项可设置 `-100`，使以后新建的订阅继续继承用户/全局。已有订阅需要单独修改，重复 `/sub` 同一源不会重套模板。中文命令为 `/会话设置 设置 ...`、`/会话设置 获取 ...`。
+会话模板支持上表普通选项、八个 `feed_` 选项及 `title`、`tags`，不支持 `state`、`target_session` 或 `platform_name`。命令没有删除单个模板键的入口；发送选项可设置 `-100`，使以后新建的订阅继续继承用户/全局。已有订阅需要单独修改，重复 `/sub` 同一源不会重套模板。中文命令为 `/会话设置 设置 ...`、`/会话设置 获取 ...`。
 
 ## 导入、导出与帮助
 

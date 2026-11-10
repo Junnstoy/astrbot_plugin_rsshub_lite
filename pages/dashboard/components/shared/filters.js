@@ -88,7 +88,7 @@ export function filterSummaryTemplate() {
 
 export function batchToolbarTemplate({ visibleExpr, countExpr, buttons }) {
   return String.raw`
-    <div class="batch-toolbar" :class="{ visible: ${visibleExpr} }">
+    <div class="batch-toolbar visible" v-if="${visibleExpr}">
       <span class="count">已选 {{ ${countExpr} }} 项</span>
       ${buttons.join('\n      ')}
     </div>`;

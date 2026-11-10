@@ -82,19 +82,26 @@ class SchedulerSettings:
 
 
 @dataclass(frozen=True)
-class SubscriptionDefaults:
-    """Default values applied to new subscriptions."""
+class FeedDefaults:
+    """Independent global display defaults for explicit /feed sends."""
+
+    length_limit: int = 0
+    display_author: bool = True
+    display_via: bool = True
+    display_title: bool = True
+    display_entry_tags: bool = False
+    display_media: bool = True
+    style: int = 0
+    merge_media: bool = True
+
+
+@dataclass(frozen=True)
+class SubscriptionDefaults(FeedDefaults):
+    """Global defaults inherited by ongoing subscription notifications."""
 
     interval: int = 10
     notify: bool = True
-    send_mode: str = "自动"
-    length_limit: int = 0
-    display_author: str = "自动"
-    display_via: str = "自动"
-    display_title: str = "自动"
-    display_entry_tags: bool = False
-    style: str = "auto"
-    display_media: bool = True
+    send_mode: int = 1
 
 
 @dataclass(frozen=True)
@@ -163,6 +170,7 @@ class ApplicationSettings:
     subscription_defaults: SubscriptionDefaults = field(
         default_factory=SubscriptionDefaults
     )
+    feed_defaults: FeedDefaults = field(default_factory=FeedDefaults)
     sender_strategies: SenderStrategySettings = field(
         default_factory=SenderStrategySettings
     )

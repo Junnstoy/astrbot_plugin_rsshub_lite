@@ -12,6 +12,7 @@ import {
   normalizeTagValues,
   normalizeTextFilterValue,
   inheritedNumberToPayload,
+  inheritedPushToPayload,
   createEmptySubscriptionFilters
 } from '../helpers.js';
 
@@ -223,23 +224,16 @@ export const subscriptionsModule = {
 
   async handleEditSub() {
     await this.runPending(`sub:save:${this.editForm.id}`, async () => {
-      const options = {};
+      const options = inheritedPushToPayload(this.editForm);
       if (this.editForm.title !== undefined) options.title = this.editForm.title;
       if (this.editForm.tags !== undefined) options.tags = this.editForm.tags;
       options.interval = inheritedNumberToPayload(this.editForm.interval_control);
       if (this.editForm.target_session !== undefined) {
         options.target_session = this.editForm.target_session;
       }
-      options.length_limit = inheritedNumberToPayload(this.editForm.length_limit_control);
       options.state = this.editForm.state_ ? 1 : 0;
       options.notify = this.editForm.notify;
-      options.send_mode = this.editForm.send_mode;
-      options.display_author = this.editForm.display_author;
-      options.display_via = this.editForm.display_via;
-      options.display_title = this.editForm.display_title;
-      options.display_entry_tags = this.editForm.display_entry_tags;
-      options.style = this.editForm.style;
-      options.display_media = this.editForm.display_media;
+
 
       await updateSubscription(this.editForm.id, options, this.currentSubUserId());
       this.showToast('订阅已更新');

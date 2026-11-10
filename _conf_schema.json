@@ -373,5 +373,147 @@
         }
       }
     }
+  },
+  "config_version": {
+    "type": "int",
+    "description": "配置格式版本（自动维护）",
+    "default": 3,
+    "invisible": true
+  },
+  "global_config": {
+    "type": "object",
+    "description": "自动推送默认配置",
+    "hint": "订阅配置 > 用户配置 > 全局默认",
+    "items": {
+      "interval": {
+        "type": "int",
+        "description": "监控间隔（分钟）",
+        "default": 10,
+        "slider": {
+          "min": 1,
+          "max": 1440,
+          "step": 1
+        }
+      },
+      "notify": {
+        "type": "bool",
+        "description": "启用通知",
+        "default": true
+      },
+      "send_mode": {
+        "type": "int",
+        "description": "发送模式：1直接，2合并消息",
+        "default": 1,
+        "options": [
+          1,
+          2
+        ]
+      },
+      "length_limit": {
+        "type": "int",
+        "description": "正文长度限制（0不限制）",
+        "default": 0,
+        "slider": {
+          "min": 0,
+          "max": 10000,
+          "step": 100
+        }
+      },
+      "display_author": {
+        "type": "bool",
+        "description": "显示作者",
+        "default": true
+      },
+      "display_via": {
+        "type": "bool",
+        "description": "显示来源",
+        "default": true
+      },
+      "display_title": {
+        "type": "bool",
+        "description": "显示标题",
+        "default": true
+      },
+      "display_entry_tags": {
+        "type": "bool",
+        "description": "显示标签",
+        "default": false
+      },
+      "display_media": {
+        "type": "bool",
+        "description": "显示媒体",
+        "default": true
+      },
+      "style": {
+        "type": "int",
+        "description": "排版：0自定义，2原始顺序",
+        "default": 0,
+        "options": [
+          0,
+          2
+        ]
+      },
+      "merge_media": {
+        "type": "bool",
+        "description": "合并同条目媒体",
+        "default": true
+      }
+    }
+  },
+  "feed_defaults": {
+    "type": "object",
+    "description": "手动 feed 默认配置",
+    "hint": "独立于自动推送；feed固定合并发送",
+    "items": {
+      "length_limit": {
+        "type": "int",
+        "description": "正文长度限制（0不限制）",
+        "default": 0,
+        "slider": {
+          "min": 0,
+          "max": 10000,
+          "step": 100
+        }
+      },
+      "display_author": {
+        "type": "bool",
+        "description": "显示作者",
+        "default": true
+      },
+      "display_via": {
+        "type": "bool",
+        "description": "显示来源",
+        "default": true
+      },
+      "display_title": {
+        "type": "bool",
+        "description": "显示标题",
+        "default": true
+      },
+      "display_entry_tags": {
+        "type": "bool",
+        "description": "显示标签",
+        "default": false
+      },
+      "display_media": {
+        "type": "bool",
+        "description": "显示媒体",
+        "default": true
+      },
+      "style": {
+        "type": "int",
+        "description": "排版：0自定义，2原始顺序",
+        "default": 0,
+        "options": [
+          0,
+          2
+        ]
+      },
+      "merge_media": {
+        "type": "bool",
+        "description": "合并同条目媒体",
+        "default": true
+      }
+    }
   }
 }

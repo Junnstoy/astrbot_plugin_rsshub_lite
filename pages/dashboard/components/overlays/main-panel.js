@@ -1,3 +1,5 @@
+import { pushSettingsTemplate } from '../shared/push-settings.js';
+
 export const mainPanelTemplate = String.raw`
   <div class="panel-overlay" :class="{ visible: panelVisible }" @click="closePanel()"></div>
 
@@ -45,18 +47,9 @@ export const mainPanelTemplate = String.raw`
           <label class="toggle-switch"><input type="checkbox" v-model="editForm.state_" /><span class="toggle-slider"></span><span class="toggle-label">{{ editForm.state_ ? '启用' : '停用' }}</span></label>
         </div>
       </div>
-      <div class="panel-section">
-        <h4>显示选项</h4>
-        <div class="setting-row"><span class="setting-label">发送模式</span><select class="select-input" v-model.number="editForm.send_mode"><option :value="-100">继承</option><option :value="-1">仅链接</option><option :value="0">自动</option><option :value="1">直接发送</option></select></div>
-        <div class="setting-row"><span class="setting-label">通知</span><select class="select-input" v-model.number="editForm.notify"><option :value="-100">继承</option><option :value="0">禁用</option><option :value="1">启用</option></select></div>
-        <div class="setting-row"><span class="setting-label">内容长度限制</span><div class="inherit-control"><select class="select-input" v-model="editForm.length_limit_control.mode"><option value="inherit">继承</option><option value="custom">自定义</option></select><div v-if="editForm.length_limit_control.mode === 'custom'" class="input-wrapper"><input type="number" v-model.number="editForm.length_limit_control.value" min="0" max="10000" /></div></div></div>
-        <div class="setting-row"><span class="setting-label">显示作者</span><select class="select-input" v-model.number="editForm.display_author"><option :value="-100">继承</option><option :value="-1">禁用</option><option :value="0">自动</option><option :value="1">强制</option></select></div>
-        <div class="setting-row"><span class="setting-label">显示来源</span><select class="select-input" v-model.number="editForm.display_via"><option :value="-100">继承</option><option :value="-2">完全禁用</option><option :value="-1">仅链接</option><option :value="0">自动</option><option :value="1">强制</option></select></div>
-        <div class="setting-row"><span class="setting-label">显示标题</span><select class="select-input" v-model.number="editForm.display_title"><option :value="-100">继承</option><option :value="-1">禁用</option><option :value="0">自动</option><option :value="1">强制</option></select></div>
-        <div class="setting-row"><span class="setting-label">显示标签</span><select class="select-input" v-model.number="editForm.display_entry_tags"><option :value="-100">继承</option><option :value="-1">禁用</option><option :value="0">启用</option></select></div>
-        <div class="setting-row"><span class="setting-label">排版策略</span><select class="select-input" v-model.number="editForm.style"><option :value="-100">继承</option><option :value="0">自动</option><option :value="1">RSSRT</option><option :value="2">原始顺序</option></select></div>
-        <div class="setting-row"><span class="setting-label">显示媒体</span><select class="select-input" v-model.number="editForm.display_media"><option :value="-100">继承</option><option :value="-1">禁用</option><option :value="0">启用</option></select></div>
-      </div>
+      <div class="setting-row"><span class="setting-label">通知</span><select class="select-input" v-model.number="editForm.notify"><option :value="-100">继承</option><option :value="1">启用</option><option :value="0">禁用</option></select></div>
+      ${pushSettingsTemplate('editForm')}
+      ${pushSettingsTemplate('editForm', { feed: true })}
       <div class="form-actions">
         <button type="button" class="btn btn-danger" :class="{ 'is-loading': isPending('sub:delete:' + editForm.id) }" :disabled="isPending('sub:delete:' + editForm.id)" @click="handleDeleteSub()">删除订阅</button>
         <div class="center-actions">

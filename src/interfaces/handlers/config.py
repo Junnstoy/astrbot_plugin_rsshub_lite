@@ -5,19 +5,17 @@ from __future__ import annotations
 from astrbot.api.event import AstrMessageEvent
 
 from ...infrastructure.config import validate_interval_value
+from ...shared.profile_options import (
+    PROFILE_OPTION_FIELDS,
+    migrate_legacy_profile_value,
+    validate_profile_value,
+)
 
 SESSION_DEFAULT_KV_PREFIX = "rsshub_session_defaults_"
 SESSION_DEFAULT_KEYS = {
     "interval",
     "notify",
-    "send_mode",
-    "length_limit",
-    "display_author",
-    "display_via",
-    "display_title",
-    "display_entry_tags",
-    "style",
-    "display_media",
+    *PROFILE_OPTION_FIELDS,
     "title",
     "tags",
 }
@@ -175,11 +173,9 @@ async def handle_sub_set_session(
                     field_name="interval",
                 )
             else:
-                parsed_value = int(value)
+                parsed_value = validate_profile_value(option_key, value)
         except ValueError as exc:
-            if option_key == "interval":
-                return {"plain": str(exc)}
-            return {"plain": f"选项 {option_key} 需要数字值"}
+            return {"plain": str(exc)}
 
     defaults[option_key] = parsed_value
     await _set_session_defaults(ctx, session_id, defaults)
@@ -217,11 +213,20 @@ async def _get_session_defaults(ctx, session_id: str) -> dict:
     raw = await ctx.get_kv_data(key, {})
     if not isinstance(raw, dict):
         return {}
-    return {key: value for key, value in raw.items() if key in SESSION_DEFAULT_KEYS}
+    defaults = {key: value for key, value in raw.items() if key in SESSION_DEFAULT_KEYS}
+    if raw.get("__profile_version", 2) < 3:
+        for field in PROFILE_OPTION_FIELDS:
+            if (
+                field in defaults
+                and isinstance(defaults[field], int)
+                and not isinstance(defaults[field], bool)
+            ):
+                defaults[field] = migrate_legacy_profile_value(field, defaults[field])
+    return defaults
 
 
 async def _set_session_defaults(ctx, session_id: str, defaults: dict):
     if not callable(getattr(ctx, "put_kv_data", None)):
         raise TypeError("当前插件上下文不支持会话默认配置存储")
     key = f"{SESSION_DEFAULT_KV_PREFIX}{session_id}"
-    await ctx.put_kv_data(key, defaults)
+    await ctx.put_kv_data(key, {**defaults, "__profile_version": 3})

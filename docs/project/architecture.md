@@ -102,7 +102,7 @@ tests/             # 单元与集成测试
 - `failed_queue_max_retries` 只控制自动重试上限
 - `deduplicate_multi_bot` 只在同一 `target_session` 且最终 payload 等价时压重，并把被压掉的记录写成 `skipped`
 
-sender 层仍保持平台差异隔离：`MessageComponentSorter` 只给出组件顺序，是否拆成多次发送由具体 sender adapter 决定。`style=0` 使用平台自动/经典策略，`style=1` 是 RSSRT 排版策略，`style=2` 使用解析树 layout fragments 尽量保留原始图文顺序。QQ Official 单图会和文本合链，Weixin OC 不合链，OneBot auto/classic 合并转发失败后会回退为纯文本 Nodes。
+sender 层保持平台差异隔离：`EntryTextFormatter.format_layout` 根据显示开关生成自定义 (`style=0`) 或原始顺序 (`style=2`) 布局，adapter 根据 `send_mode=1/2` 分派到 `send_direct` / `send_merged`。`merge_media` 控制一条内容内部是否共用一个消息或转发节点。真正的合并转发当前仅支持 OneBot，不支持的平台或媒体组合明确报错，不以多条直接消息冒充合并转发。
 
 ### 2. 测试推送
 
@@ -113,6 +113,8 @@ sender 层仍保持平台差异隔离：`MessageComponentSorter` 只给出组件
 
 - 真实订阅回归验证
 - 临时 URL 手工测试
+
+独立的 `/feed <订阅ID> <N>` 使用 `PushFeedCommand`：只读抓取并按新到旧选择条目，解析订阅 → 用户 → 全局 `feed_defaults` 的手动显示选项，整个批次和末尾汇总一次进入会话队列，并通过 `send_entries_to_session` 发送一个合并转发包。它不写自动推送历史或去重水位，和上述 `/sub_test` 诊断路径不同。
 
 ### 3. 已移除的 AI 链路与兼容数据
 
@@ -149,8 +151,11 @@ flowchart TD
 
 - 基础抓取/超时/代理
 - 平台 sender 策略
+- 普通 `global_config` 与手动 `feed_defaults` 两组全局默认值
 
 插件启动时会在基础设施配置层按 `_conf_schema.json` 做一次配置自愈：补齐缺失字段、删除 schema 外字段、转换可恢复的数值类型，并按 `options` / `slider` 修正非法选项和越界数值。旧 sender strategy 结构和少量 legacy 别名仍在进入运行态配置前归一化；内部字段如 `db_file` 不写回 AstrBot 配置面。
+
+当前配置版本标记为 3，旧枚举在自愈前一次性转换。Plugin Pages 保存两组默认显示值时调用现有 dispatcher 的 `apply_defaults` 热更新；调度间隔仍由 scheduler 持有启动快照。
 
 ### 运行级用户/订阅配置
 

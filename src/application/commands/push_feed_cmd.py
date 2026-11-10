@@ -12,11 +12,16 @@ from ...domain.repositories.user_repository import UserRepository
 from ...infrastructure.pipeline import EntryFormatInput, EntryTextFormatter
 from ...infrastructure.rendering import cleanup_ephemeral_generated_media_paths
 from ...infrastructure.utils import get_logger
-from ...shared.constants import SEND_MODE_LINK_ONLY
+from ...shared.constants import SEND_MODE_MERGED
 from ..dto.result_dto import CommandResult
+from ..ports import SendEntry
 from ..services.feed_polling_service import FeedPollingService
 from ..services.html_parser import HTMLParser
-from ..services.notification_dispatcher import NotificationDispatcher, SendTarget
+from ..services.notification_dispatcher import (
+    NotificationDispatcher,
+    SendTarget,
+    normalize_media_items,
+)
 
 logger = get_logger()
 
@@ -92,8 +97,9 @@ class PushFeedCommand:
         )
         # Reuse the automatic push inheritance rules without applying notify/state
         # gates: this is an explicit one-time request, not a subscription update.
-        options = self._dispatcher._resolve_effective_push_options(subscription, owner)
-        send_mode = self._dispatcher._resolve_send_mode(subscription, owner)
+        options = self._dispatcher._resolve_effective_push_options(
+            subscription, owner, profile="feed"
+        )
         target = SendTarget(
             user_id=user_id,
             platform_name=platform_name,
@@ -107,51 +113,79 @@ class PushFeedCommand:
             or feed.link
         )
 
-        sent = failed = 0
-        cancelled = False
-        first_error = ""
-        for entry in selected:
-            try:
-                result = await self._send_entry(
-                    entry, feed, feed_title, target, options, send_mode
-                )
-            except Exception as exc:
-                logger.exception("手动条目推送失败: sub_id=%s", sub_id)
-                result = {"ok": False, "error": str(exc)}
-            if result.get("cancelled"):
-                cancelled = True
-                break
-            if result.get("ok"):
-                sent += 1
-            else:
-                failed += 1
-                first_error = first_error or str(result.get("error") or "发送失败")
-
         shortage = count > len(entries)
-        lines = []
-        if shortage:
-            lines.append(f"请求 {count} 条，当前源仅有 {len(entries)} 条。")
-        if cancelled:
-            lines.append(f"推送已停止：成功 {sent}/{len(selected)} 条。")
-        else:
-            lines.append(
-                f"订阅 {sub_id}：最新 {len(selected)} 条，成功 {sent} 条，失败 {failed} 条。"
+        summary = ""
+        prepared = []
+        cleanup_layouts = []
+        preparation_errors = []
+        try:
+            for entry in selected:
+                try:
+                    item, original_layout = await self._prepare_entry(
+                        entry, feed, feed_title, options
+                    )
+                except Exception as exc:
+                    logger.exception("手动条目排版失败: sub_id=%s", sub_id)
+                    preparation_errors.append(str(exc))
+                    continue
+                prepared.append(item)
+                cleanup_layouts.append(original_layout)
+            if not prepared:
+                raise ValueError(
+                    preparation_errors[0] if preparation_errors else "没有可发送的条目"
+                )
+            summary = (
+                f"订阅 {sub_id}：最新 {len(selected)} 条，成功 {len(prepared)} 条，"
+                f"失败 {len(preparation_errors)} 条。"
             )
-        if first_error:
-            lines.append(f"失败原因：{first_error}")
+            if shortage:
+                summary += f"\n请求 {count} 条，当前源仅有 {len(entries)} 条。"
+            if preparation_errors:
+                summary += f"\n排版失败：{preparation_errors[0]}"
+            result = await self._dispatcher.send_entries_to_session(
+                target=target,
+                entries=prepared,
+                summary=summary,
+                job_description=f"feed sub={sub_id}, count={len(selected)}",
+                channel_title=feed_title,
+                channel_link=feed.link,
+                feed_id=feed.id,
+                sub_id=sub_id,
+                send_mode=SEND_MODE_MERGED,
+                style=options.style,
+                merge_media=options.merge_media,
+            )
+        except Exception as exc:
+            logger.exception("手动条目推送失败: sub_id=%s", sub_id)
+            result = {"ok": False, "error": str(exc)}
+        finally:
+            for layout in cleanup_layouts:
+                cleanup_ephemeral_generated_media_paths(layout)
+
+        cancelled = bool(result.get("cancelled"))
+        success = bool(result.get("ok"))
+        if cancelled:
+            message = "推送已停止，本次合并消息未完成发送。"
+        elif not success:
+            message = f"合并推送失败：{result.get('error') or '发送失败'}"
+        else:
+            message = summary
         return CommandResult(
-            success=sent > 0 and failed == 0 and not cancelled,
-            message="\n".join(lines),
+            success=success and not preparation_errors,
+            message=message,
             data={
                 "sub_id": sub_id,
                 "feed_id": feed.id,
                 "requested": count,
                 "available": len(entries),
                 "selected": len(selected),
-                "sent": sent,
-                "failed": failed,
+                "sent": len(prepared) if success else 0,
+                "failed": len(preparation_errors)
+                if success or cancelled
+                else len(selected),
                 "cancelled": cancelled,
                 "shortage": shortage,
+                "summary_included": bool(success and result.get("summary_included")),
             },
         )
 
@@ -168,75 +202,55 @@ class PushFeedCommand:
         # Python's stable sort preserves source order among unknown/equal dates.
         return False, datetime.min.replace(tzinfo=UTC)
 
-    async def _send_entry(self, entry, feed, feed_title, target, options, send_mode):
+    async def _prepare_entry(self, entry, feed, feed_title, options):
         title = str(getattr(entry, "title", "") or "")
         link = str(getattr(entry, "link", "") or feed.link)
-        layout = None
-        media_urls = None
-        media_items = None
-        parsed = None
+        raw_content = str(
+            getattr(entry, "content", "") or getattr(entry, "summary", "") or ""
+        )
+        parsed = await HTMLParser(
+            raw_content,
+            feed_link=feed.link,
+            render_tables_as_images=options.display_media
+            and self._formatter._table_to_image_enabled,
+        ).parse()
         try:
-            if send_mode == SEND_MODE_LINK_ONLY:
-                content = self._dispatcher._build_link_only_content(
-                    entry_title=title, entry_link=link
-                )
-            else:
-                raw_content = str(
-                    getattr(entry, "content", "") or getattr(entry, "summary", "") or ""
-                )
-                parsed = await HTMLParser(raw_content, feed_link=feed.link).parse()
-                body = await self._formatter.clean_text(raw_content)
-                if any(
-                    isinstance(m, (AudioContent, VideoContent)) for m in parsed.media
-                ):
-                    body = FeedPollingService._remove_media_placeholders(body)
-                content = await self._formatter.format_entry(
-                    EntryFormatInput(
-                        title=title,
-                        content=body,
-                        summary=body,
-                        link=link,
-                        author=str(getattr(entry, "author", "") or ""),
-                        feed_title=feed_title,
-                        feed_link=feed.link,
-                        tags=tuple(getattr(entry, "tags", None) or ()),
-                    ),
-                    options,
-                )
-                if options.display_media:
-                    media_items = FeedPollingService._media_items_from_parsed(
-                        parsed.media
-                    )
-                    media_urls = [url for _, url in media_items]
-                    media_urls.extend(
-                        str(enclosure.url)
-                        for enclosure in (getattr(entry, "enclosures", None) or [])
-                        if getattr(enclosure, "url", "")
-                    )
-                    media_urls = list(dict.fromkeys(media_urls))
-                    layout = self._dispatcher._limit_original_layout_text(
-                        list(parsed.layout),
-                        style=options.style,
-                        length_limit=options.length_limit,
-                    )
-            # The session sender uses the existing queue, without creating a feed
-            # success history record that could suppress a later scheduled push.
-            return await self._dispatcher.send_to_session(
-                target=target,
-                content=content,
-                media_urls=media_urls,
-                media_items=media_items,
-                layout=layout,
-                job_description=f"feed sub={target.sub_id}",
-                channel_title=feed_title,
-                channel_link=feed.link,
-                entry_title=title,
-                entry_link=link,
-                feed_id=feed.id,
-                sub_id=target.sub_id,
-                send_mode=send_mode,
-                style=options.style,
+            body = await self._formatter.clean_text(
+                raw_content, render_tables_as_images=False
             )
-        finally:
-            if parsed is not None:
-                cleanup_ephemeral_generated_media_paths(parsed.layout)
+            if any(isinstance(m, (AudioContent, VideoContent)) for m in parsed.media):
+                body = FeedPollingService._remove_media_placeholders(body)
+            entry_input = EntryFormatInput(
+                title=title,
+                content=body,
+                summary=body,
+                link=link,
+                author=str(getattr(entry, "author", "") or ""),
+                feed_title=feed_title,
+                feed_link=feed.link,
+                tags=tuple(getattr(entry, "tags", None) or ()),
+            )
+            content = await self._formatter.format_entry(entry_input, options)
+            media_items = []
+            if options.display_media:
+                parsed_items = FeedPollingService._media_items_from_parsed(parsed.media)
+                enclosure_urls = [
+                    str(enclosure.url)
+                    for enclosure in (getattr(entry, "enclosures", None) or [])
+                    if getattr(enclosure, "url", "")
+                ]
+                media_items = normalize_media_items(enclosure_urls, parsed_items)
+            layout = await self._formatter.format_layout(
+                entry_input,
+                options,
+                list(parsed.layout),
+                media_items=media_items,
+            )
+            if not content.strip() and not media_items and not layout:
+                raise ValueError("条目在当前显示配置下没有可发送内容")
+            return SendEntry(
+                message=content, media=media_items or None, layout=layout
+            ), parsed.layout
+        except BaseException:
+            cleanup_ephemeral_generated_media_paths(parsed.layout)
+            raise

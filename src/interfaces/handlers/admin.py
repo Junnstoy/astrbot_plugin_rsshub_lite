@@ -24,4 +24,10 @@ async def handle_test_sub(event: AstrMessageEvent, sub_id: int, deps: dict) -> d
         platform_name=event.get_platform_name(),
         event=event,
     )
+    if (
+        getattr(result, "success", False)
+        and isinstance(getattr(result, "data", None), dict)
+        and result.data.get("summary_included")
+    ):
+        return {}
     return {"plain": result.message}

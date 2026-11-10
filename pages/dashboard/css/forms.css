@@ -66,6 +66,17 @@
   font-size: 13px;
 }
 
+.setting-help {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0 0 12px;
+}
+
+.push-settings-group .setting-row > .setting-label {
+  margin-bottom: 0;
+}
+
 /* ===== 标签与 Tooltip ===== */
 .label-with-tooltip {
   display: flex;

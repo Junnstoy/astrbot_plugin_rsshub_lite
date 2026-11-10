@@ -184,7 +184,7 @@ class RSSHubPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("feed", alias={"立即推送"})
     async def feed(self, event: AstrMessageEvent, args: GreedyStr):
-        """管理员立即发送该订阅最新 N 条，按从新到旧排列。
+        """管理员将订阅最新 N 条与统计合并发送，从新到旧，使用独立 feed 配置。
 
         用法:
         - /feed <订阅ID> <N>
@@ -209,7 +209,7 @@ class RSSHubPlugin(Star):
         - /sub_profile set user <key> <value>
         示例:
         - /sub_profile set sub 12 style 2
-        - /sub_profile set user display_media 0
+        - /sub_profile set user display_media 1
         """
         result = await _h.handle_sub_profile_set(event, str(args), self._deps)
         if result.get("plain"):

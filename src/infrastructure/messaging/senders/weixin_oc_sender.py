@@ -12,6 +12,19 @@ from .types import MessageContext, SendRequest, SendResult
 class WeixinOCMessageSender(DefaultMessageSender):
     """微信 Official Account 专用发送器。"""
 
+    async def _send_direct_components(
+        self, request, components, prepared_by_url, context
+    ):
+        media = [item for item in components if self._is_media_component(item)]
+        texts = [item for item in components if item.kind == "text" and item.text]
+        if (context is None or context.merge_media) and (
+            len(media) > 1 or (media and texts)
+        ):
+            return self._unsupported_media_combination("微信 Official Account")
+        return await super()._send_direct_components(
+            request, components, prepared_by_url, context
+        )
+
     async def send_to_user(
         self,
         request: SendRequest,

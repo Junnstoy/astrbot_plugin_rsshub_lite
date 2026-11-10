@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...config import get_config_manager
-from ...pipeline import MessageFormatter
+from ...pipeline import MessageComponent, MessageFormatter
 from ...utils import get_logger
 from .base_sender import DefaultMessageSender
 from .telegraph_client import TelegraphClient
@@ -29,6 +29,38 @@ class TelegramMessageSender(DefaultMessageSender):
     - 媒体优先展示（caption = text）
     - 组件排序由 MessageFormatter 统一（platform="telegram"）
     """
+
+    async def _send_direct_components(
+        self, request, components, prepared_by_url, context
+    ):
+        if context is not None and not context.merge_media:
+            return await super()._send_direct_components(
+                request, components, prepared_by_url, context
+            )
+        media = [item for item in components if self._is_media_component(item)]
+        if not media:
+            return await super()._send_direct_components(
+                request, components, prepared_by_url, context
+            )
+        # A media album comprises several Telegram messages. Only a single
+        # native media+caption can satisfy one-entry/one-message semantics.
+        if len(media) != 1:
+            return self._unsupported_media_combination("Telegram")
+        text = "\n\n".join(
+            item.text for item in components if item.kind == "text" and item.text
+        )
+        if not text:
+            return await super()._send_direct_components(
+                request, components, prepared_by_url, context
+            )
+        if media[0].media_type not in {"image", "video"}:
+            return self._unsupported_media_combination("Telegram")
+        caption_components = [media[0]]
+        if text:
+            caption_components.append(MessageComponent(kind="text", text=text))
+        return await self._send_chain(
+            request.session_id, self._chain_from_components(caption_components)
+        )
 
     @staticmethod
     def _strategy_value(strategy, key: str, default=None):

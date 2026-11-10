@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .plugin_config_models import (
     BasicConfig,
+    FeedDefaultsConfig,
     GlobalConfig,
     HttpConfig,
     MediaConfig,
@@ -12,6 +13,7 @@ from .plugin_config_models import (
 from .runtime_settings import (
     ApplicationSettings,
     BasicSettings,
+    FeedDefaults,
     FeedFetchSettings,
     HttpSettings,
     MediaPlatformLimits,
@@ -31,6 +33,8 @@ __all__ = [
     "ApplicationSettings",
     "BasicConfig",
     "BasicSettings",
+    "FeedDefaults",
+    "FeedDefaultsConfig",
     "FeedFetchSettings",
     "GlobalConfig",
     "HttpConfig",

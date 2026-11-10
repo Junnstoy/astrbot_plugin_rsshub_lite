@@ -146,8 +146,21 @@ class SubscriptionRepositoryImpl:
         """保存订阅"""
         db = get_database()
         async with db.get_session() as session:
-            orm = self._to_orm(subscription)
-            session.add(orm)
+            orm = (
+                await session.get(SubORM, subscription.id)
+                if subscription.id is not None
+                else None
+            )
+            if orm is None:
+                orm = self._to_orm(subscription)
+                session.add(orm)
+            else:
+                values = self._to_orm(subscription).model_dump()
+                for key, value in values.items():
+                    # Legacy AI configuration is compatibility data, not a
+                    # writable part of the current display profile.
+                    if key not in {"id", "handlers", "handlers_mode"}:
+                        setattr(orm, key, value)
             await session.commit()
             await session.refresh(orm)
             return self._to_entity(orm)
@@ -243,6 +256,15 @@ class SubscriptionRepositoryImpl:
             display_entry_tags=orm.display_entry_tags,
             style=orm.style,
             display_media=orm.display_media,
+            merge_media=getattr(orm, "merge_media", -100),
+            feed_length_limit=getattr(orm, "feed_length_limit", -100),
+            feed_display_author=getattr(orm, "feed_display_author", -100),
+            feed_display_via=getattr(orm, "feed_display_via", -100),
+            feed_display_title=getattr(orm, "feed_display_title", -100),
+            feed_display_entry_tags=getattr(orm, "feed_display_entry_tags", -100),
+            feed_display_media=getattr(orm, "feed_display_media", -100),
+            feed_style=getattr(orm, "feed_style", -100),
+            feed_merge_media=getattr(orm, "feed_merge_media", -100),
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -272,6 +294,15 @@ class SubscriptionRepositoryImpl:
             display_entry_tags=sub.display_entry_tags,
             style=sub.style,
             display_media=sub.display_media,
+            merge_media=getattr(sub, "merge_media", -100),
+            feed_length_limit=getattr(sub, "feed_length_limit", -100),
+            feed_display_author=getattr(sub, "feed_display_author", -100),
+            feed_display_via=getattr(sub, "feed_display_via", -100),
+            feed_display_title=getattr(sub, "feed_display_title", -100),
+            feed_display_entry_tags=getattr(sub, "feed_display_entry_tags", -100),
+            feed_display_media=getattr(sub, "feed_display_media", -100),
+            feed_style=getattr(sub, "feed_style", -100),
+            feed_merge_media=getattr(sub, "feed_merge_media", -100),
             created_at=sub.created_at,
             updated_at=sub.updated_at,
         )

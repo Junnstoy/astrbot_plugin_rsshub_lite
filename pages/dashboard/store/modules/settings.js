@@ -11,6 +11,9 @@ export const settingsModule = {
       if (pluginResult.history_retention_days !== undefined) {
         this.historyRetentionDays = Number(pluginResult.history_retention_days) || 30;
       }
+      if (pluginResult.feed_defaults) {
+        this.feedDefaults = { ...this.feedDefaults, ...pluginResult.feed_defaults };
+      }
       if (pluginResult.subscription_defaults) {
         this.subscriptionDefaults = {
           ...this.subscriptionDefaults,
@@ -28,10 +31,14 @@ export const settingsModule = {
     await this.runPending('plugin-settings:save', async () => {
       const result = await setPluginSettings({
         subscription_defaults: this.subscriptionDefaults,
+        feed_defaults: this.feedDefaults,
         history_retention_days: this.historyRetentionDays,
       });
       if (result.history_retention_days !== undefined) {
         this.historyRetentionDays = Number(result.history_retention_days) || 30;
+      }
+      if (result.feed_defaults) {
+        this.feedDefaults = { ...this.feedDefaults, ...result.feed_defaults };
       }
       if (result.subscription_defaults) {
         this.subscriptionDefaults = {

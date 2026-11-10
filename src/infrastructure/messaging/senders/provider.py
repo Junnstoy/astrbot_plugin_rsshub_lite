@@ -13,6 +13,7 @@ from ...utils import get_logger
 from .factory import get_sender_for_platform
 from .types import ChannelInfo
 from .types import MessageContext as InfraMessageContext
+from .types import SendEntry as InfraSendEntry
 from .types import SendRequest as InfraSendRequest
 
 logger = get_logger()
@@ -40,18 +41,32 @@ class InfrastructureMessageSenderAdapter:
             platform_name=context.platform_name if context else "",
             send_mode=context.send_mode if context else None,
             style=context.style if context else 0,
+            merge_media=context.merge_media if context else True,
             sender_strategy=(
                 getattr(context, "sender_strategy", None)
                 if context and getattr(context, "sender_strategy", None) is not None
                 else self._sender_strategy
             ),
         )
-        result = await self._sender.send_to_user(
+        send = (
+            self._sender.send_merged
+            if infra_context.send_mode == 2 or request.entries is not None
+            else self._sender.send_direct
+        )
+        result = await send(
             InfraSendRequest(
                 session_id=request.session_id,
                 message=request.message,
                 media=request.media,
                 layout=request.layout,
+                entries=[
+                    InfraSendEntry(
+                        message=item.message, media=item.media, layout=item.layout
+                    )
+                    for item in request.entries
+                ]
+                if request.entries is not None
+                else None,
             ),
             context=infra_context,
         )

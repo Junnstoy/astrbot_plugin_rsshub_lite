@@ -1469,6 +1469,97 @@ class DefaultMessageSender:
             if cleanup_owned:
                 self._cleanup_owned_paths(effective_prepared)
 
+    def _configured_components(self, request, prepared, context):
+        """Keep the formatter's layout and append enclosure-only media once."""
+        prepared_by_url = {
+            item.original_url: item for item in prepared or [] if item.original_url
+        }
+        fallback = self._build_components(request, prepared, context)
+        if request.layout:
+            components = self._layout_to_components(
+                request, prepared_media_by_url=prepared_by_url
+            )
+            seen = {item.original_url for item in components if item.original_url}
+            components.extend(
+                item
+                for item in fallback
+                if self._is_media_component(item) and item.original_url not in seen
+            )
+            failed_urls = self._collect_failed_urls(prepared or [])
+            if failed_urls:
+                components.append(
+                    MessageComponent(
+                        kind="text", text=self._append_failed_links("", failed_urls)
+                    )
+                )
+        else:
+            # Retry histories have text/media but no original HTML layout.
+            components = [item for item in fallback if item.kind == "text"]
+            components.extend(item for item in fallback if item.kind != "text")
+        return self._apply_first_send_candidates(
+            components,
+            prepared_by_url,
+            platform=context.platform_name if context else "",
+        ), prepared_by_url
+
+    async def send_direct(self, request, context=None) -> SendResult:
+        """Send actual messages, preserving content order and merge_media."""
+        prepared = None
+        try:
+            prepared = await self._prepare_effective_media(request, context)
+            components, prepared_by_url = self._configured_components(
+                request, prepared, context
+            )
+            if not components:
+                return SendResult(ok=False, detail="empty_message")
+            return await self._send_direct_components(
+                request, components, prepared_by_url, context
+            )
+        except Exception as err:
+            logger.exception("Direct send failed: session=%s", request.session_id)
+            return SendResult(
+                ok=False,
+                transient=self._is_transient_network_error(err),
+                detail=self._stage_error_detail("direct_send", str(err)),
+            )
+        finally:
+            if request.prepared_media is None:
+                self._cleanup_owned_paths(prepared)
+
+    async def _send_direct_components(
+        self, request, components, prepared_by_url, context
+    ):
+        if context is None or context.merge_media:
+            result = await self._send_chain(
+                request.session_id, self._chain_from_components(components)
+            )
+            if result.ok:
+                return result
+            return await self._retry_text_with_generated_fallbacks(request, result)
+        return await self._send_components_in_order(
+            request.session_id,
+            components,
+            combine_image_text=False,
+            default_text=request.message,
+            prepared_media_by_url=prepared_by_url,
+            platform=context.platform_name,
+        )
+
+    @staticmethod
+    def _unsupported_media_combination(platform: str) -> SendResult:
+        return SendResult(
+            ok=False,
+            detail=f"combined_media_not_supported: {platform} 无法将这些内容和媒体合成一条消息，请关闭合并媒体",
+        )
+
+    async def send_merged(self, request, context=None) -> SendResult:
+        """A normal message chain is not a merged-forward capability."""
+        platform = context.platform_name if context else "当前平台"
+        return SendResult(
+            ok=False,
+            detail=f"merged_forward_not_supported: {platform} 不支持合并转发，请使用直接发送",
+        )
+
     async def send_to_group(
         self,
         platform: str,

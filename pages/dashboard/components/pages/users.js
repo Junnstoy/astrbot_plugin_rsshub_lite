@@ -12,7 +12,7 @@ export const usersActionsTemplate = [
       `<button class="btn" :class="userEditMode ? 'btn-primary' : 'btn-secondary'" type="button" @click="toggleUserEditMode()">{{ userEditMode ? '完成编辑' : '批量操作' }}</button>`,
     ],
   }),
-  batchToolbarTemplate({ visibleExpr: 'userEditMode && selectedUserIds.length > 0', countExpr: 'selectedUserIds.length', buttons: [
+  batchToolbarTemplate({ visibleExpr: "activeTab === 'users' && userEditMode && selectedUserIds.length > 0", countExpr: 'selectedUserIds.length', buttons: [
     `<button class="btn btn-danger btn-small" :class="{ 'is-loading': isPending('users:delete-batch') }" :disabled="isPending('users:delete-batch')" @click="deleteSelectedUsers()">批量删除</button>`,
   ] }),
 ].join('\n');

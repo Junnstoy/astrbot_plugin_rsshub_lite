@@ -20,6 +20,10 @@ except Exception:  # pragma: no cover - lightweight test fallback
 from ...domain.entities.content_types import AudioContent, VideoContent
 from ...domain.repositories.feed_repository import FeedRepository
 from ...domain.repositories.subscription_repository import SubscriptionRepository
+from ...domain.repositories.user_repository import UserRepository
+from ...infrastructure.pipeline import EntryFormatInput, EntryTextFormatter
+from ...infrastructure.rendering import cleanup_ephemeral_generated_media_paths
+from ...shared.profile_options import PROFILE_OPTION_FIELDS
 from ..dto.feed_dto import FeedDTO
 from ..dto.result_dto import CommandResult
 from ..dto.subscription_dto import SubscriptionDTO
@@ -54,6 +58,7 @@ class TestSubscriptionCommand:
         parser: FeedParser | None = None,
         polling_service: FeedPollingService | None = None,
         notification_dispatcher: NotificationDispatcher | None = None,
+        user_repo: UserRepository | None = None,
     ):
         self._subscription_repo = subscription_repo
         self._feed_repo = feed_repo
@@ -61,6 +66,7 @@ class TestSubscriptionCommand:
         self._parser = parser
         self._polling_service = polling_service
         self._notification_dispatcher = notification_dispatcher
+        self._user_repo = user_repo
 
     async def execute(
         self,
@@ -160,6 +166,10 @@ class TestSubscriptionCommand:
             state=subscription.state,
             created_at=subscription.created_at,
             updated_at=subscription.updated_at,
+            **{
+                key: getattr(subscription, key, -100)
+                for key in ("interval", "notify", *PROFILE_OPTION_FIELDS)
+            },
         )
 
         return CommandResult(
@@ -235,44 +245,49 @@ class TestSubscriptionCommand:
         entered_chain = 0
         skipped = 0
         failed = 0
+        summary_included = False
         failure_reasons: list[str] = []
         for entry in selected:
             title = entry.title or ""
             raw_content = entry.content or entry.summary or ""
             parsed = await HTMLParser(raw_content, feed_link=feed_url).parse()
-            plain_summary = parsed.html_tree.get_plain().strip()
-            if any(isinstance(m, (AudioContent, VideoContent)) for m in parsed.media):
-                plain_summary = FeedPollingService._remove_media_placeholders(
-                    plain_summary
+            try:
+                plain_summary = parsed.html_tree.get_plain().strip()
+                if any(
+                    isinstance(m, (AudioContent, VideoContent)) for m in parsed.media
+                ):
+                    plain_summary = FeedPollingService._remove_media_placeholders(
+                        plain_summary
+                    )
+                entry_link = getattr(entry, "link", "") or feed_url
+                feed_meta = self._feed_meta(read_result.web_feed)
+                effective_feed_title = (
+                    feed_title
+                    or str(feed_meta.get("title", "") or "").strip()
+                    or feed_url
                 )
-            entry_link = getattr(entry, "link", "") or feed_url
-            feed_meta = self._feed_meta(read_result.web_feed)
-            effective_feed_title = (
-                feed_title or str(feed_meta.get("title", "") or "").strip() or feed_url
-            )
-            author = str(getattr(entry, "author", "") or "").strip()
-            media_urls = [m.url for m in parsed.media if getattr(m, "url", "")]
-            media_urls.extend(
-                str(enclosure.url)
-                for enclosure in (getattr(entry, "enclosures", None) or [])
-                if getattr(enclosure, "url", "")
-            )
-            media_urls = list(dict.fromkeys(media_urls))
-            media_items = FeedPollingService._media_items_from_parsed(parsed.media)
-            tags = tuple(getattr(entry, "tags", []) or ())
-            content = await FeedPollingService._format_dispatch_content_async(
-                title=title,
-                body=plain_summary,
-                link=entry_link,
-                feed_title=effective_feed_title,
-                feed_link=feed_url,
-                author=author,
-                tags=tags,
-            )
+                author = str(getattr(entry, "author", "") or "").strip()
+                media_urls = [m.url for m in parsed.media if getattr(m, "url", "")]
+                media_urls.extend(
+                    str(enclosure.url)
+                    for enclosure in (getattr(entry, "enclosures", None) or [])
+                    if getattr(enclosure, "url", "")
+                )
+                media_urls = list(dict.fromkeys(media_urls))
+                media_items = FeedPollingService._media_items_from_parsed(parsed.media)
+                tags = tuple(getattr(entry, "tags", []) or ())
+                content = await FeedPollingService._format_dispatch_content_async(
+                    title=title,
+                    body=plain_summary,
+                    link=entry_link,
+                    feed_title=effective_feed_title,
+                    feed_link=feed_url,
+                    author=author,
+                    tags=tags,
+                )
 
-            if subscription is not None and feed is not None:
-                stats = (
-                    await self._notification_dispatcher.dispatch_to_feed_subscribers(
+                if subscription is not None and feed is not None:
+                    stats = await self._notification_dispatcher.dispatch_to_feed_subscribers(
                         feed_id=feed.id,
                         content=content,
                         entry_title=title,
@@ -297,63 +312,117 @@ class TestSubscriptionCommand:
                             media_urls=tuple(media_urls),
                             media_items=tuple(media_items),
                             layout=tuple(parsed.layout),
+                            tags=tags,
                         ),
                         include_inactive_subscription_ids=True,
                         bypass_success_dedup=True,
                         event=event,
                         include_error_detail=True,
+                        completion_summary=(
+                            f"已触发测试推送: {entered_chain + 1}/{len(selected)} 条进入正式链路"
+                            f"（成功 {pushed + 1} 条，最新 {len(selected)} 条）"
+                            + (f"（失败 {failed} 条）" if failed else "")
+                        )
+                        if entry is selected[-1]
+                        else "",
                     )
-                )
-                if stats.get("success", 0) > 0 or stats.get("pending", 0) > 0:
-                    entered_chain += 1
+                    if stats.get("cancelled", 0):
+                        return CommandResult(
+                            success=False, message="测试推送已取消，未完成发送。"
+                        )
+                    summary_included = summary_included or bool(
+                        stats.get("summary_included")
+                    )
                     if stats.get("success", 0) > 0:
-                        pushed += 1
-                    skipped += stats.get("skipped", 0)
+                        entered_chain += 1
+                        if stats.get("success", 0) > 0:
+                            pushed += 1
+                        skipped += stats.get("skipped", 0)
+                        continue
+                    if stats.get("failed", 0) > 0 or stats.get("pending", 0) > 0:
+                        entered_chain += 1
+                        failed += stats.get("failed", 0) + stats.get("pending", 0)
+                        reason = str(stats.get("last_error") or "").strip()
+                        if reason:
+                            failure_reasons.append(reason)
+                        continue
+                    if stats.get("skipped", 0) > 0:
+                        entered_chain += 1
+                        skipped += stats.get("skipped", 0)
+                        continue
                     continue
-                if stats.get("failed", 0) > 0:
-                    entered_chain += 1
-                    failed += stats.get("failed", 0)
-                    reason = str(stats.get("last_error") or "").strip()
+
+                owner = (
+                    await self._user_repo.get_by_id(user_id)
+                    if self._user_repo is not None
+                    else None
+                )
+                options = self._notification_dispatcher._resolve_effective_push_options(
+                    None, owner
+                )
+                send_mode = self._notification_dispatcher._resolve_send_mode(
+                    None, owner
+                )
+                formatter = EntryTextFormatter()
+                format_input = EntryFormatInput(
+                    title=title,
+                    content=raw_content,
+                    link=entry_link,
+                    author=author,
+                    feed_title=effective_feed_title,
+                    feed_link=feed_url,
+                    tags=tags,
+                )
+                content = await formatter.format_entry(format_input, options)
+                layout = await formatter.format_layout(
+                    format_input, options, parsed.layout, media_items
+                )
+                send_result = await self._notification_dispatcher.send_to_session(
+                    target=SendTarget(
+                        user_id=user_id,
+                        platform_name=platform_name,
+                        target_session=target_session,
+                        sub_id=0,
+                    ),
+                    content=content,
+                    media_urls=media_urls if options.display_media else [],
+                    media_items=media_items if options.display_media else [],
+                    layout=layout,
+                    job_description=f"sub_test target={target}",
+                    channel_title=effective_feed_title,
+                    channel_link=feed_url,
+                    entry_title=title,
+                    entry_link=entry_link,
+                    send_mode=send_mode,
+                    style=options.style,
+                    merge_media=options.merge_media,
+                    completion_summary=(
+                        f"已触发测试推送: {pushed + 1}/{len(selected)} 条成功（最新 {len(selected)} 条）"
+                    )
+                    if entry is selected[-1]
+                    else "",
+                )
+                if send_result.get("cancelled"):
+                    return CommandResult(
+                        success=False, message="测试推送已取消，未完成发送。"
+                    )
+                summary_included = summary_included or bool(
+                    send_result.get("summary_included")
+                )
+                if send_result.get("ok"):
+                    pushed += 1
+                else:
+                    reason = str(send_result.get("error") or "").strip()
                     if reason:
                         failure_reasons.append(reason)
-                    continue
-                if stats.get("skipped", 0) > 0:
-                    entered_chain += 1
-                    skipped += stats.get("skipped", 0)
-                    continue
-                continue
-
-            send_result = await self._notification_dispatcher.send_to_session(
-                target=SendTarget(
-                    user_id=user_id,
-                    platform_name=platform_name,
-                    target_session=target_session,
-                    sub_id=0,
-                ),
-                content=content,
-                media_urls=media_urls,
-                media_items=media_items,
-                layout=list(parsed.layout),
-                job_description=f"sub_test target={target}",
-                channel_title=effective_feed_title,
-                channel_link=feed_url,
-                entry_title=title,
-                entry_link=entry_link,
-            )
-            if send_result.get("ok"):
-                pushed += 1
-            else:
-                reason = str(send_result.get("error") or "").strip()
-                if reason:
-                    failure_reasons.append(reason)
+            finally:
+                cleanup_ephemeral_generated_media_paths(parsed.layout)
 
         if subscription is not None:
             if entered_chain == 0:
                 return CommandResult(
                     success=False,
-                    message=(
-                        "测试推送未进入正式发送链路，可能因通知关闭或条目已去重"
-                    ),
+                    message=("测试推送未进入正式发送链路，可能因通知关闭或条目已去重"),
                 )
             if pushed == 0 and failed > 0:
                 reason = f": {failure_reasons[0]}" if failure_reasons else ""
@@ -362,6 +431,8 @@ class TestSubscriptionCommand:
                     message=f"测试推送发送失败{reason}",
                 )
             note = ""
+            if failed:
+                note = f"（失败 {failed} 条）"
             if pushed == 0 and skipped > 0:
                 note = "（本次未实际发送，可能因通知关闭或条目已去重）"
             return CommandResult(
@@ -370,6 +441,7 @@ class TestSubscriptionCommand:
                     f"已触发测试推送: {entered_chain}/{len(selected)} 条进入正式链路"
                     f"（成功 {pushed} 条，最新 {len(selected)} 条）{note}"
                 ),
+                data={"summary_included": summary_included},
             )
         if pushed == 0 and failure_reasons:
             return CommandResult(
@@ -379,6 +451,7 @@ class TestSubscriptionCommand:
         return CommandResult(
             success=pushed > 0,
             message=f"已触发测试推送: {pushed}/{len(selected)} 条成功（最新 {len(selected)} 条）",
+            data={"summary_included": summary_included},
         )
 
     async def execute_by_url(

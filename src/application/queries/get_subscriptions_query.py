@@ -7,6 +7,7 @@
 from pydantic import BaseModel, Field
 
 from ...domain.repositories.subscription_repository import SubscriptionRepository
+from ...shared.profile_options import PROFILE_OPTION_FIELDS
 from ..dto.subscription_dto import SubscriptionDTO
 
 
@@ -94,6 +95,10 @@ class GetSubscriptionsQuery:
                     target_session=sub.target_session,
                     platform_name=sub.platform_name,
                     state=sub.state,
+                    **{
+                        key: getattr(sub, key, -100)
+                        for key in ("interval", "notify", *PROFILE_OPTION_FIELDS)
+                    },
                     created_at=sub.created_at,
                     updated_at=sub.updated_at,
                 )
