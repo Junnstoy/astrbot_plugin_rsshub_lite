@@ -50,8 +50,15 @@ class SubStateCommand:
                 message="未找到该订阅或无权限",
             )
 
-        subscription.state = 1 if enable else 0
-        await self._subscription_repo.save(subscription)
+        subscription.enable() if enable else subscription.disable()
+        updated = await self._subscription_repo.update_options(
+            sub_id,
+            user_id,
+            state=subscription.state,
+            updated_at=subscription.updated_at,
+        )
+        if updated is None:
+            return CommandResult(success=False, message="未找到该订阅或无权限")
 
         action = "启用" if enable else "禁用"
         return CommandResult(

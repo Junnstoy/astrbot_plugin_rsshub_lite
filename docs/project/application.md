@@ -7,21 +7,25 @@
 
 ## 聊天命令边界
 
-以下命令需要保持完整参数签名，兼容 `GreedyStr` 风格参数。
+需要接收整段文本的入口使用 AstrBot 真正的 `GreedyStr`，且不为该参数添加 `=""` 默认值。宿主参数分配器会优先走默认值分支，`args: str = ""` 或带默认值的 `GreedyStr` 都可能只收到第一个 token；纯函数 handler 测试无法发现这一集成问题。
 
 | 命令 | 当前行为 | 不要回退 |
 | --- | --- | --- |
-| `/sub` | 支持多个 URL 批量订阅。 | 不要退回单 URL 语义。 |
+| `/sub` | 支持多个 URL/RSSHub 路由；将当前会话 KV 默认值传给新建命令。 | 路由使用配置的 RSSHub base；重复订阅不重套模板。 |
 | `/unsub` | 支持 ID 和 URL 混合批量取消。 | 不要只支持单 ID。 |
-| `/sub_list` | 只展示当前会话订阅，支持分页。 | 不恢复 `all` 范围。 |
+| `/sub_list [page] [page_size]` | 只展示当前用户、当前会话订阅；默认页码 1、每页 5 条，每页允许 1～100。 | 保留两个参数的完整解析，ID 是方括号中的订阅 ID。 |
+| `/push`、`/unpush` | 当前用户、当前会话内，以订阅 ID/逗号列表/显式 `all` 持久化启停。停用时取消可归属所选订阅的任务。 | 新命令空参数不修改数据；不以 Feed ID 取消其他用户的任务。 |
+| `/feed <订阅ID> <N>` | 管理员读取当前会话订阅源，按有效发布时间降序即时发送最多 N 条；不足时发全部并提示。 | 不改变订阅开关、Feed 游标、去重水位或自动历史；继承订阅所有者的显示设置。 |
 | `/sub_export [all]` | 保留管理员校验。 | 不绕过 admin guard。 |
 | `/sub_import` | 支持 TOML 路径和上传等待流程。 | 不要移除上传等待监听。 |
 | `/sub_test <ID\|URL>` | 真实推送最新条目，不是预览；聊天命令不接受额外范围参数。 | 不要恢复“测试推送未进入正式链路”的泛化误判。 |
-| `/sub_status` | 展示当前会话运行中或排队中的推送任务。 | 不把全局队列无筛选暴露给普通用户。 |
-| `/sub_stop [job_id\|feed_id\|all]` | 支持精确停止和批量停止；无参数时停止当前运行任务。 | 不让停止语义绕过审计。 |
+| `/push_status` | 展示当前会话运行中或排队中的推送任务；`sub_status` 保留别名。 | 任务为空不表示自动推送已停用，订阅状态查看 `/sub_list`。 |
+| `/push_cancel [job_id\|feed_id\|all]` | 支持精确取消和批量取消；无参数取消当前运行任务；`sub_stop` 保留别名。 | 不改订阅状态，不等同 `/unpush`；队列取消只能作用于已登记的任务。 |
 | `/rsshelp` | 发送预生成帮助图；按 AstrBot `timezone` 选择日间/夜间主题，读不到或时区非法时回退系统本地时间。 | 不把帮助图生成放到运行时热路径。 |
 
-命令解析细节见 [`commands.md`](./commands.md)。
+旧 `sub_state`、`activate_subs`、`deactivate_subs` 兼容入口保留；旧批量命令空参数仍按当前会话 `all` 处理。新的帮助主入口推荐 `push`、`unpush`。命令用法见 [`commands.md`](../usage/commands.md)。
+
+`PushFeedCommand` 使用 `fetch_feed_entries` 读端口、`EntryTextFormatter` 和 `send_to_session`，逐条进入现有发送队列。手动请求不受订阅 `state` 或有效 `notify` 阻挡，不持久化推送历史，因此可重复发送、没有自动失败重试，也不会让后续自动推送误判已送达。源中无有效发布时间的条目放在有时间的条目后；等时和无时间条目保持源顺序。单条失败会继续其余条目，队列取消结果会停止本次循环；抓取阶段及尚未入队的未来条目不属于可取消队列任务。
 
 ## 已移除的 AI 入口
 
@@ -33,12 +37,28 @@
 
 | 主题 | 当前语义 | 备注 |
 | --- | --- | --- |
-| 配置继承 | 订阅继承用户，用户继承全局默认；继承值只认 `-100` | 不恢复 `use_sub_config` / `use_user_config`。 |
+| 发送配置继承 | 订阅 → 用户 → 启动时全局默认，逐字段解析且仅 `-100` 继承 | 涵盖 notify、send_mode、length_limit、display_*、style；不包含 interval、state、title、tags 或目标。 |
+| 会话默认值 | `rsshub_session_defaults_<unified_msg_origin>` 插件 KV；只在 `/sub` 新建时复制到订阅 | 模板不是第四层动态继承，不覆盖已有订阅；模板显式值会遮蔽用户默认值。 |
+| 调度间隔 | 正数订阅 interval 优先，否则全局默认间隔 | `RSSScheduler._load_due_subscriptions` 不查询 UserORM，用户 interval 不参与调度。 |
+| 设置生效 | 用户与订阅选项后续分发读取；全局默认由 dispatcher/scheduler 在初始化时捕获 | Plugin Pages 保存全局配置不热替换现有服务，重载后完整生效；已入队消息不重新排版。 |
+| 配置查询 | profile get user 返回保存值；session get 返回模板值 | 不是针对某个订阅计算后的最终值；没有 profile get sub 命令。 |
 | 旧处理器字段 | 原版数据库字段与迁移保留，现有 JSON 配置不再执行 | 聊天命令、Web UI 和 TOML 不提供处理器配置入口。 |
 | 旧翻译字段 | `translate`、`translate_target_lang` 保持移除 | 翻译不再是应用层内置入口。 |
 | `minimal_interval` | 写入阶段硬下限 | 不要降级成运行时临时 clamp。 |
 | 用户事实表 | 写入订阅或推送历史前必须确保非空 `user_id` 有用户记录 | 启动自愈会从订阅和历史补齐缺失用户。 |
 | 删除用户 | 默认删除用户和该用户全部订阅 | 推送历史默认保留，显式 `delete_push_history=true` 才删除。 |
+
+订阅 `state=0/1` 控制定时调度；`notify=0` 在分发阶段写 `skipped`，不会取消已准备的任务，`push` 也不会强制覆盖它。用户 `state`、`default_target_session` 可保存但当前主轮询与聊天 `/sub` 不读取它们进行停推或目标绑定；投递目标来自订阅自身的 `target_session`、`platform_name`。不要把用户状态与 AstrBot 管理员权限混用。
+
+## 格式化与 style 的实际分工
+
+`NotificationDispatcher._resolve_effective_push_options` 解析发送显示项，`_resolve_send_mode` 独立解析发送模式。`EntryTextFormatter.format_entry` 负责 HTML 清洗后的标题、正文、源条目标签、来源及作者后缀，**没有 style 分支**。`style=1`（RSSRT）目前仅保留枚举和配置映射，运行链路与 `style=0` 相同。
+
+`style=2` 的差异在 OneBot、QQ Official、Weixin sender：当 `request.layout` 非空时，以 `_layout_to_components` 还原文本/媒体片段顺序，通过 `_send_components_in_order` 发送。OneBot、QQ Official 可以将图片与后随文本组合，Weixin 分开发送。Telegram 和默认 sender 没有这一专用分支。原始顺序只保证可解析的内容顺序，不复现网页样式；通常也不使用 formatter 另外添加的标题和来源后缀。
+
+普通 formatter 中 `display_title`、`display_author` 只对 `-1` 禁用做分支，`0/1` 均显示已有内容；`display_via=-2` 提前返回空来源后缀，会一起隐藏位于后缀内的作者。`display_entry_tags` 与 `display_media` 在用户/订阅整数选项中均以 `-1` 禁用，不能用 `0=false` 理解。
+
+`display_media` 关闭会清空媒体和 layout，`send_mode=-1` 会改为标题+链接并清空媒体/layout。普通 `length_limit` 限制正文；原始 layout 则由 `_limit_original_layout_text` 累计截断文本片段。用户可执行示例和完整边界见[配置说明](../usage/configuration.md#排版-style-实际行为)。
 
 ## 推送历史与重试
 

@@ -18,3 +18,7 @@
 不导入或迁移 yuma_yys 的 NoneBot2 数据。工作区的 yuma_yys、.previous-lite、.upstream 和测试依赖仅供本地参考，不进入发布包。
 
 metadata 保留原版插件标识 astrbot_plugin_rsshub，以沿用原版 API 与数据路径；此裁剪版应与原版二选一安装。未配置上游自动更新地址，防止裁剪版被原版升级覆盖。
+
+2026-11-11 的 lite.2 更新修复聊天命令多参数丢失、已有订阅启停误用新增接口的问题；增加 push/unpush 和按订阅 ID 手动推送最新 N 条，接通会话默认配置与 RSSHub 路由订阅，允许用户默认 style=2。数据库结构、迁移和 Repository 保持上游实现。
+
+测试目录中的 `astrbot_command_filter.py` 来自 AstrBotDevs/AstrBot（Copyright (C) 2022-2099 Soulter，GNU AGPL v3 or later），对应 Git blob `abf339fda7f0740f542a91cd4adb859d5ef6ed5f`。测试使用其实际参数解析器验证插件入口，避免只调用 handler 而遗漏宿主解析差异；该测试夹具不进入安装包。

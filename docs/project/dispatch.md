@@ -35,7 +35,9 @@ flowchart TD
   E -->|"否"| F["写 skipped history"]
   E -->|"是"| C["创建 pending push_history"]
   C --> H["进入 SessionPushQueue"]
-  H --> I["调用平台 sender"]
+  H --> Q{"手动发送或订阅仍启用"}
+  Q -->|"是"| I["调用平台 sender"]
+  Q -->|"否"| N["更新 stopped history，不再自动重试"]
   I --> J{"发送结果"}
   J -->|"成功"| K["更新 success history"]
   J -->|"可重试失败"| L["保留失败上下文并进入自动重试策略"]
@@ -147,6 +149,10 @@ dispatcher 有一组不可恢复错误关键词：
 - 可观察运行中与排队任务
 
 这能避免同一会话的大量消息并发打乱顺序或互相抢占平台资源。
+
+`/unpush <订阅ID[,ID...]|all>` 先持久化停用当前用户在当前会话中的订阅，再按订阅 ID 停止其运行中和排队任务；不会按 Feed 或整个群聊取消其他用户的任务。`/push` 可重新启用，订阅和通知配置仍然保留。
+
+自动 Feed 分发和自动失败重试在队列任务执行、调用 sender 前重新读取订阅状态。即使轮询在 `/unpush` 前已取得订阅快照、命令结束后才入队，也会停止发送并把历史记为 `stopped`，不再自动重试。显式 `/sub_test`（`include_inactive_subscription_ids`）及人工历史重试保留手动发送语义。已经发到平台的消息无法撤回。
 
 ## 媒体失败为什么要回退链接
 

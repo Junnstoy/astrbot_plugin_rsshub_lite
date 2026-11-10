@@ -4,6 +4,8 @@ from .admin import handle_test_sub
 from .batch import (
     handle_batch_activate,
     handle_batch_deactivate,
+    handle_push,
+    handle_unpush,
     handle_unsub_all,
 )
 from .config import (
@@ -16,6 +18,7 @@ from .config import (
     handle_sub_set_user,
 )
 from .data import handle_export, handle_import
+from .feed import handle_feed
 from .subscription import (
     handle_rss_stop,
     handle_sub,
@@ -26,6 +29,9 @@ from .subscription import (
 )
 
 __all__ = [
+    "handle_push",
+    "handle_unpush",
+    "handle_feed",
     "handle_sub",
     "handle_unsub",
     "handle_sub_list",

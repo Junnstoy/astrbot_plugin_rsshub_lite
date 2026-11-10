@@ -153,7 +153,7 @@ async def handle_sub_set_session(
     """设置会话默认配置"""
     if not key or not value:
         return {
-            "plain": "用法: /sub_set_session <选项> <值>\n可用选项: interval, notify, send_mode, length_limit, display_title, display_media 等"
+            "plain": "用法: /sub_session set <选项> <值>\n仅作用于此后在当前会话中新建的订阅。\n可用选项: interval, notify, send_mode, length_limit, display_title, display_media 等"
         }
 
     session_id = event.unified_msg_origin
@@ -183,7 +183,9 @@ async def handle_sub_set_session(
 
     defaults[option_key] = parsed_value
     await _set_session_defaults(ctx, session_id, defaults)
-    return {"plain": f"会话默认配置已更新: {option_key} = {parsed_value}"}
+    return {
+        "plain": f"会话默认配置已更新: {option_key} = {parsed_value}\n仅应用于此后新建的订阅，已有订阅不变。"
+    }
 
 
 async def handle_sub_get_session(
@@ -202,7 +204,7 @@ async def handle_sub_get_session(
     if option_key:
         return {"plain": f"{option_key} = {defaults.get(option_key, '未设置')}"}
     else:
-        lines = ["会话默认配置:"]
+        lines = ["会话默认配置（仅用于此后新建订阅）:"]
         for k, v in defaults.items():
             lines.append(f"  {k} = {v}")
         return {"plain": "\n".join(lines)}

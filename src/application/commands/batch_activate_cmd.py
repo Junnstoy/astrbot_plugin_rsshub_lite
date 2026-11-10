@@ -43,12 +43,14 @@ class BatchActivateCommand:
         self,
         sub_ids: list[int],
         user_id: str,
+        current_session: str | None = None,
     ) -> CommandResult:
         """执行批量启用命令
 
         Args:
             sub_ids: 订阅 ID 列表
             user_id: 用户 ID
+            current_session: 可选的当前会话范围；聊天入口必须传入
 
         Returns:
             CommandResult: 命令执行结果
@@ -59,12 +61,16 @@ class BatchActivateCommand:
                 message="未提供订阅 ID",
             )
 
+        if current_session is not None and not current_session.strip():
+            return CommandResult(success=False, message="无法确认当前会话，未修改订阅")
+        sub_ids = list(dict.fromkeys(sub_ids))
+
         items: list[BatchActivateItem] = []
         success_count = 0
         failure_count = 0
 
         for sub_id in sub_ids:
-            item = await self._process_single(sub_id, user_id)
+            item = await self._process_single(sub_id, user_id, current_session)
             items.append(item)
             if item.success:
                 success_count += 1
@@ -101,12 +107,14 @@ class BatchActivateCommand:
         self,
         sub_id: int,
         user_id: str,
+        current_session: str | None = None,
     ) -> BatchActivateItem:
         """处理单个启用
 
         Args:
             sub_id: 订阅 ID
             user_id: 用户 ID
+            current_session: 可选的当前会话范围；聊天入口必须传入
 
         Returns:
             BatchActivateItem: 单项结果
@@ -126,6 +134,16 @@ class BatchActivateCommand:
                 message="无权操作此订阅",
             )
 
+        if (
+            current_session is not None
+            and (subscription.target_session or current_session) != current_session
+        ):
+            return BatchActivateItem(
+                sub_id=sub_id,
+                success=False,
+                message="该订阅不属于当前会话",
+            )
+
         if subscription.state == 1:
             return BatchActivateItem(
                 sub_id=sub_id,
@@ -133,8 +151,19 @@ class BatchActivateCommand:
                 message=f"订阅已经是启用状态 (ID: {sub_id})",
             )
 
-        subscription.state = 1  # 启用状态
-        await self._subscription_repo.save(subscription)
+        subscription.enable()
+        updated = await self._subscription_repo.update_options(
+            sub_id,
+            user_id,
+            state=subscription.state,
+            updated_at=subscription.updated_at,
+        )
+        if updated is None:
+            return BatchActivateItem(
+                sub_id=sub_id,
+                success=False,
+                message=f"订阅不存在或已变更 (ID: {sub_id})",
+            )
 
         return BatchActivateItem(
             sub_id=sub_id,
@@ -177,55 +206,18 @@ class BatchActivateCommand:
         user_id: str,
         current_session: str,
     ) -> CommandResult:
-        """启用当前会话中的所有订阅
-
-        Args:
-            user_id: 用户 ID
-            current_session: 当前会话 ID
-
-        Returns:
-            CommandResult: 命令执行结果
-        """
+        """启用当前用户在当前会话中的订阅，保留原版空目标兼容。"""
+        if not current_session.strip():
+            return CommandResult(success=False, message="无法确认当前会话，未修改订阅")
         subscriptions = await self._subscription_repo.get_by_user(user_id)
-        if not subscriptions:
-            return CommandResult(
-                success=True,
-                message="当前会话没有需要启用的订阅",
-            )
-
-        # 过滤当前会话中禁用的订阅
-        # NULL target_session 视为当前会话
-        subs = [
-            sub
+        sub_ids = [
+            sub.id
             for sub in subscriptions
-            if sub.state == 0
-            and (sub.target_session == current_session or not sub.target_session)
+            if sub.id is not None
+            and (sub.target_session or current_session) == current_session
         ]
-
-        if not subs:
-            return CommandResult(
-                success=True,
-                message="当前会话没有需要启用的订阅",
-            )
-
-        # 激活所有订阅
-        activated_count = 0
-        sub_titles = []
-        for sub in subs:
-            sub.state = 1
-            await self._subscription_repo.save(sub)
-            activated_count += 1
-            # 尝试获取 feed 标题
-            title = sub.title or f"订阅 {sub.id}"
-            sub_titles.append(f"  • {title}")
-
-        message_lines = [
-            f"已启用当前会话的 {activated_count} 个订阅：",
-            *sub_titles,
-            "\n当前会话订阅已全部启用",
-        ]
-
-        return CommandResult(
-            success=True,
-            message="\n".join(message_lines),
+        if not sub_ids:
+            return CommandResult(success=True, message="当前会话没有可操作的订阅")
+        return await self.execute(
+            sub_ids=sub_ids, user_id=user_id, current_session=current_session
         )

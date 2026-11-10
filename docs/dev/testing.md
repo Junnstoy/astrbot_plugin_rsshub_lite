@@ -83,6 +83,8 @@ stty echo
 ## 回归检查清单
 
 - [ ] `/sub_test` 仍然是真实发送，不是 preview。
+- [ ] `/push`、`/unpush` 的多 ID / `all` 仅作用于真实发送者在当前会话的订阅；空参数只显示帮助。
+- [ ] `test_push_controls.py` 验证 SQLite 重启后启停状态保留、按订阅精确取消任务、入队前并发停用不会迟到自动发送；手动测试与历史重试仍可发送。
 - [ ] `push_history.content` 不泄漏原始 HTML 标签。
 - [ ] `raw_xml` 仍保留原始条目 XML。
 - [ ] `-100` 继承规则没有被破坏。
@@ -90,3 +92,7 @@ stty echo
 - [ ] Plugin Pages 没有重新暴露 `link_preview`。
 - [ ] 旧 handlers 非空仍只发送原始条目，不调用 AI。
 - [ ] 原版数据库模型与迁移未因精简而删列，旧历史仍可读取及重试。
+- [ ] 使用宿主 CommandFilter 快照解析真实入口，分页第二参数、开关值、带空格的配置值均完整传入；GreedyStr 不设置字符串默认值。
+- [ ] push/unpush 使用真实 SQLite 验证更新、重开后持久化和会话/用户隔离，空参数不批量修改。
+- [ ] /feed 按订阅 ID 与当前会话取最新 N 条，从新到旧发送，不修改自动轮询游标或成功去重记录。
+- [ ] sub_session 新建默认值实际传入订阅命令，已有订阅不被覆盖。

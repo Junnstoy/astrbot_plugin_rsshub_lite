@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
@@ -841,6 +842,7 @@ class NotificationDispatcher:
                         sub_id=sub.id,
                         send_mode=prepared.effective_send_mode,
                         style=prepared.effective_style,
+                        require_active_subscription=not include_inactive_subscription_ids,
                     )
 
                     # 5. 更新推送状态
@@ -919,6 +921,7 @@ class NotificationDispatcher:
         send_mode: int | None = None,
         style: int = 0,
         sender_strategy: Any = None,
+        require_active_subscription: bool = False,
     ) -> dict[str, Any]:
         return await self._send_to_session(
             target=target,
@@ -936,6 +939,7 @@ class NotificationDispatcher:
             send_mode=send_mode,
             style=style,
             sender_strategy=sender_strategy,
+            require_active_subscription=require_active_subscription,
         )
 
     async def _send_to_session(
@@ -956,6 +960,7 @@ class NotificationDispatcher:
         send_mode: int | None = None,
         style: int = 0,
         sender_strategy: Any = None,
+        require_active_subscription: bool = False,
     ) -> dict[str, Any]:
         """
         发送通知到指定目标
@@ -987,6 +992,16 @@ class NotificationDispatcher:
             )
 
             async def _send(job: PushJob):
+                # A poll/retry may have captured this subscription before /unpush
+                # and only enter the queue afterwards. Recheck inside the job so
+                # an old snapshot cannot send after the persistent state changed.
+                # Explicit manual test/history sends keep their existing bypass.
+                if require_active_subscription:
+                    current_sub = await self._subscription_repo.get_by_id(
+                        int(sub_id or target.sub_id or 0)
+                    )
+                    if current_sub is None or current_sub.state != 1:
+                        raise asyncio.CancelledError("Subscription no longer active")
                 logger.debug(
                     "开始 RSS 推送任务: job_id=%s, session=%s, sub=%s",
                     job.job_id,
@@ -1192,6 +1207,7 @@ class NotificationDispatcher:
                     send_mode=(
                         SEND_MODE_AUTO if history.source_type == "agent" else None
                     ),
+                    require_active_subscription=history.source_type != "agent",
                 )
 
                 error_msg = result.get("error", "")

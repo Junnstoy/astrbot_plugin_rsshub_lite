@@ -94,6 +94,9 @@ class SubscribeFeedCommand:
                 message="请提供 RSS 链接，用法：/sub <RSS 链接>",
             )
 
+        if url.startswith("/") and not url.startswith("//"):
+            url = self._fetch_settings.rsshub_base_url.rstrip("/") + url
+
         if not url.startswith(("http://", "https://")):
             return CommandResult(
                 success=False,

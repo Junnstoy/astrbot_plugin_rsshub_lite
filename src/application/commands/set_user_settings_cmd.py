@@ -23,7 +23,7 @@ VALID_SETTINGS = {
     "display_via": (-2, 1),
     "display_title": (-1, 1),
     "display_entry_tags": (-1, 1),
-    "style": (0, 1),
+    "style": (0, 2),  # 0=自动, 1=RSSRT, 2=原始顺序
     "display_media": (-1, 1),
 }
 INHERITABLE_SETTINGS = set(VALID_SETTINGS) - {"state"}

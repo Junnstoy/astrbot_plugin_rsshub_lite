@@ -8,6 +8,7 @@ from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import File, Image
 from astrbot.api.star import Context, Star
+from astrbot.core.star.filter.command import GreedyStr
 
 from .bootstrap import PluginDeps, PluginRuntime, create_plugin_runtime
 from .src.application.commands import HelpImageCommand
@@ -69,22 +70,22 @@ class RSSHubPlugin(Star):
     # ── 命令方法（装饰器留在插件入口类，委托到纯函数） ───────────────────────
 
     @filter.command("sub", alias={"订阅"})
-    async def sub_feed(self, event: AstrMessageEvent, args: str = ""):
+    async def sub_feed(self, event: AstrMessageEvent, args: GreedyStr):
         """订阅 RSS 源。
 
         用法:
-        - /sub <url1> [url2 ...]
+        - /sub <URL或RSSHub路由> [更多URL或路由 ...]
         示例:
         - /sub https://rsshub.app/bilibili/user/dynamic/123456
         """
-        result = await _h.handle_sub(event, str(args), self._deps)
+        result = await _h.handle_sub(event, str(args), self._deps, ctx=self)
         if result.get("chain"):
             yield event.chain_result(result["chain"])
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
     @filter.command("unsub", alias={"取消订阅"})
-    async def unsub_feed(self, event: AstrMessageEvent, args: str = ""):
+    async def unsub_feed(self, event: AstrMessageEvent, args: GreedyStr):
         """取消订阅（支持 ID/URL 批量）。
 
         用法:
@@ -98,7 +99,7 @@ class RSSHubPlugin(Star):
             yield event.plain_result(result["plain"])
 
     @filter.command("sub_list", alias={"订阅列表"})
-    async def sub_list(self, event: AstrMessageEvent, args: str = ""):
+    async def sub_list(self, event: AstrMessageEvent, args: GreedyStr):
         """查看当前会话订阅列表（分页）。
 
         用法:
@@ -111,39 +112,86 @@ class RSSHubPlugin(Star):
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
-    @filter.command("sub_stop", alias={"rss_stop", "停止RSS", "停止推送"})
-    async def stop_rss_job(self, event: AstrMessageEvent, args: str = ""):
-        """停止当前会话推送任务。
+    @filter.command(
+        "push_cancel", alias={"sub_stop", "rss_stop", "停止RSS", "取消推送任务"}
+    )
+    async def stop_rss_job(self, event: AstrMessageEvent, args: GreedyStr):
+        """取消本次发送任务，不改变订阅的自动推送开关。
 
         用法:
-        - /sub_stop
-        - /sub_stop <job_id|feed_id|all>
+        - /push_cancel
+        - /push_cancel <job_id|feed_id|all>
         示例:
-        - /sub_stop rss-000123
-        - /sub_stop 42
-        - /sub_stop all
+        - /push_cancel rss-000123
+        - /push_cancel all
         """
         result = _h.handle_rss_stop(event, self._push_job_queue, str(args))
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
-    @filter.command("sub_status", alias={"推送状态", "任务状态"})
+    @filter.command("push_status", alias={"sub_status", "推送状态", "任务状态"})
     async def sub_status(self, event: AstrMessageEvent):
-        """查看当前会话推送任务状态（running + queued）。"""
+        """查看当前会话正在发送和排队的任务；订阅开关请看 /sub_list。"""
         result = _h.handle_sub_status(event, self._push_job_queue)
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
     @filter.command("sub_state", alias={"订阅状态"})
-    async def sub_state(self, event: AstrMessageEvent, sub_id_str: str = ""):
-        """切换订阅启用状态。
+    async def sub_state(self, event: AstrMessageEvent, sub_id_str: GreedyStr):
+        """旧启停命令兼容入口，推荐 /push 和 /unpush。
 
         用法:
         - /sub_state <sub_id> on|off
         示例:
         - /sub_state 12 off
         """
-        result = await _h.handle_sub_state(event, sub_id_str, self._deps)
+        result = await _h.handle_sub_state(
+            event, str(sub_id_str), self._deps, queue=self._push_job_queue
+        )
+        if result.get("plain"):
+            yield event.plain_result(result["plain"])
+
+    @filter.command("push", alias={"sub_start", "启用推送"})
+    async def push(self, event: AstrMessageEvent, args: GreedyStr):
+        """持续启用自己在当前会话中的订阅，等待定时检查更新。
+
+        用法:
+        - /push <订阅ID[,ID...]|all>
+        示例:
+        - /push 1,3,4
+        - /push all
+        """
+        result = await _h.handle_push(event, str(args), self._deps)
+        if result.get("plain"):
+            yield event.plain_result(result["plain"])
+
+    @filter.command("unpush", alias={"停用推送", "停止推送"})
+    async def unpush(self, event: AstrMessageEvent, args: GreedyStr):
+        """持续停用自动推送并取消所选订阅的待发任务，保留订阅。
+
+        用法:
+        - /unpush <订阅ID[,ID...]|all>
+        示例:
+        - /unpush 1,3,4
+        - /unpush all
+        """
+        result = await _h.handle_unpush(
+            event, str(args), self._deps, queue=self._push_job_queue
+        )
+        if result.get("plain"):
+            yield event.plain_result(result["plain"])
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @filter.command("feed", alias={"立即推送"})
+    async def feed(self, event: AstrMessageEvent, args: GreedyStr):
+        """管理员立即发送该订阅最新 N 条，按从新到旧排列。
+
+        用法:
+        - /feed <订阅ID> <N>
+        示例:
+        - /feed 3 5
+        """
+        result = await _h.handle_feed(event, str(args), self._deps)
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
@@ -153,23 +201,28 @@ class RSSHubPlugin(Star):
         pass
 
     @sub_profile_group.command("set", alias={"设置"})
-    async def sub_profile_set(self, event: AstrMessageEvent, args: str = ""):
-        """设置订阅或用户配置。
+    async def sub_profile_set(self, event: AstrMessageEvent, args: GreedyStr):
+        """修改单个订阅的设置，或自己的默认发送设置。
 
         用法:
         - /sub_profile set sub <sub_id> <option> <value>
         - /sub_profile set user <key> <value>
+        示例:
+        - /sub_profile set sub 12 style 2
+        - /sub_profile set user display_media 0
         """
         result = await _h.handle_sub_profile_set(event, str(args), self._deps)
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
     @sub_profile_group.command("get", alias={"获取"})
-    async def sub_profile_get(self, event: AstrMessageEvent, args: str = ""):
+    async def sub_profile_get(self, event: AstrMessageEvent, args: GreedyStr):
         """查询用户配置。
 
         用法:
         - /sub_profile get user [key]
+        示例:
+        - /sub_profile get user style
         """
         result = await _h.handle_sub_profile_get(event, str(args), self._deps)
         if result.get("plain"):
@@ -182,14 +235,18 @@ class RSSHubPlugin(Star):
 
     @sub_session_group.command("set", alias={"设置"})
     async def sub_set_session(
-        self, event: AstrMessageEvent, key: str = "", value: str = ""
+        self, event: AstrMessageEvent, key: str, value: GreedyStr
     ):
-        """设置当前会话默认配置。
+        """设置当前会话新建订阅的默认值，不修改已有订阅。
 
         用法:
         - /sub_session set <key> <value>
+        示例:
+        - /sub_session set interval 30
         """
-        result = await _h.handle_sub_set_session(event, key, value, self._deps, self)
+        result = await _h.handle_sub_set_session(
+            event, key, str(value), self._deps, self
+        )
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
@@ -205,26 +262,30 @@ class RSSHubPlugin(Star):
             yield event.plain_result(result["plain"])
 
     @filter.command("activate_subs", alias={"enable_subs", "启用全部订阅"})
-    async def batch_activate(self, event: AstrMessageEvent, sub_ids: str = ""):
-        """批量启用订阅。
+    async def batch_activate(self, event: AstrMessageEvent, sub_ids: GreedyStr):
+        """旧批量启用命令兼容入口，推荐 /push all。
 
         用法:
         - /activate_subs
         - /activate_subs 1,2,3
         """
-        result = await _h.handle_batch_activate(event, sub_ids, self._deps)
+        result = await _h.handle_batch_activate(
+            event, str(sub_ids) or "all", self._deps
+        )
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
     @filter.command("deactivate_subs", alias={"disable_subs", "禁用全部订阅"})
-    async def batch_deactivate(self, event: AstrMessageEvent, sub_ids: str = ""):
-        """批量禁用订阅。
+    async def batch_deactivate(self, event: AstrMessageEvent, sub_ids: GreedyStr):
+        """旧批量停用命令兼容入口，推荐 /unpush all。
 
         用法:
         - /deactivate_subs
         - /deactivate_subs 1,2,3
         """
-        result = await _h.handle_batch_deactivate(event, sub_ids, self._deps)
+        result = await _h.handle_unpush(
+            event, str(sub_ids) or "all", self._deps, queue=self._push_job_queue
+        )
         if result.get("plain"):
             yield event.plain_result(result["plain"])
 
@@ -257,7 +318,7 @@ class RSSHubPlugin(Star):
             yield event.plain_result(result["plain"])
 
     @filter.command("sub_import", alias={"导入订阅"})
-    async def import_subs(self, event: AstrMessageEvent, args: str = ""):
+    async def import_subs(self, event: AstrMessageEvent, args: GreedyStr):
         """导入订阅。
 
         用法:
@@ -342,7 +403,7 @@ class RSSHubPlugin(Star):
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("sub_test", alias={"测试订阅"})
-    async def test_sub(self, event: AstrMessageEvent, args: str = ""):
+    async def test_sub(self, event: AstrMessageEvent, args: GreedyStr):
         """管理员测试推送。
 
         用法:

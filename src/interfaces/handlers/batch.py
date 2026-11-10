@@ -2,56 +2,114 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from astrbot.api.event import AstrMessageEvent
 
+from ...application.services.session_push_queue import SessionPushQueue
 from ...infrastructure.utils import get_plugin_export_dir
 from ...shared.constants import ONEBOT_PLATFORMS
 
 _INLINE_EXPORT_LIMIT = 5000
 
 
+def _parse_push_targets(args: str) -> list[int] | None:
+    """Return None for explicit all; reject an invalid list as a whole."""
+    value = (args or "").strip()
+    if value.lower() == "all":
+        return None
+    if not re.fullmatch(r"[0-9]+(?:\s*,\s*[0-9]+)*", value):
+        raise ValueError("请提供订阅 ID、逗号分隔的 ID 列表或 all")
+    ids = list(dict.fromkeys(int(item.strip()) for item in value.split(",")))
+    if not all(sub_id > 0 for sub_id in ids):
+        raise ValueError("订阅 ID 必须是正整数")
+    return ids
+
+
+async def _handle_push_state(
+    event: AstrMessageEvent,
+    args: str,
+    deps: dict,
+    *,
+    enabled: bool,
+    queue: SessionPushQueue | None = None,
+) -> dict:
+    command = "push" if enabled else "unpush"
+    usage = (
+        f"用法: /{command} <订阅ID[,ID...]|all>\n示例: /{command} 1,2 或 /{command} all"
+    )
+    try:
+        ids = _parse_push_targets(args)
+    except ValueError as exc:
+        return {"plain": f"{exc}\n{usage}"}
+
+    user_id = str(event.get_sender_id() or "").strip()
+    current_session = str(event.unified_msg_origin or "").strip()
+    if not user_id or not current_session:
+        return {"plain": "无法确认当前用户或会话，未修改订阅"}
+    action = deps["batch_activate_cmd" if enabled else "batch_deactivate_cmd"]
+    if ids is None:
+        result = await action.execute_by_session(
+            user_id=user_id, current_session=current_session
+        )
+    else:
+        result = await action.execute(
+            sub_ids=ids, user_id=user_id, current_session=current_session
+        )
+
+    message = result.message
+    items = getattr(result.data, "items", ()) if result.data is not None else ()
+    succeeded = {item.sub_id for item in items if item.success}
+    failures = [f"[{item.sub_id}] {item.message}" for item in items if not item.success]
+    if failures:
+        message += "\n" + "\n".join(failures)
+    if succeeded and enabled:
+        message += "\n已开启所选订阅，后续按现有通知配置自动推送。"
+    elif succeeded:
+        # Never stop all session/feed jobs: another user may subscribe to the
+        # same feed in this group. Cancel only successfully disabled sub IDs.
+        stopped = 0
+        if queue is not None:
+            for job in queue.get_jobs(current_session):
+                if job.sub_id in succeeded:
+                    stopped += int(
+                        queue.stop_by_job_id(current_session, job.job_id).stopped
+                    )
+        message += "\n已持续停止所选订阅的自动推送，订阅仍保留。"
+        if stopped:
+            message += f"已请求停止对应的 {stopped} 个运行中或排队任务。"
+        message += "\n使用 /push <订阅ID[,ID...]|all> 可重新开启。"
+    return {"plain": message}
+
+
+async def handle_push(event: AstrMessageEvent, args: str, deps: dict) -> dict:
+    """Persistently enable the sender's subscriptions in the current session."""
+    return await _handle_push_state(event, args, deps, enabled=True)
+
+
+async def handle_unpush(
+    event: AstrMessageEvent,
+    args: str,
+    deps: dict,
+    queue: SessionPushQueue | None = None,
+) -> dict:
+    """Persistently disable subscriptions and stop their known queued jobs."""
+    return await _handle_push_state(event, args, deps, enabled=False, queue=queue)
+
+
 async def handle_batch_activate(
     event: AstrMessageEvent, sub_ids: str, deps: dict
 ) -> dict:
-    """启用订阅"""
-    user_id = event.get_sender_id()
-    current_session = event.unified_msg_origin
-
-    if sub_ids:
-        ids = [int(x.strip()) for x in sub_ids.split(",") if x.strip().isdigit()]
-        if not ids:
-            return {"plain": "请提供订阅 ID 列表\n用法: /activate_subs 1,2,3"}
-        result = await deps["batch_activate_cmd"].execute(sub_ids=ids, user_id=user_id)
-    else:
-        result = await deps["batch_activate_cmd"].execute_by_session(
-            user_id=user_id,
-            current_session=current_session,
-        )
-    return {"plain": result.message}
+    """Compatibility wrapper; explicit all is required for a session-wide change."""
+    return await handle_push(event, sub_ids, deps)
 
 
 async def handle_batch_deactivate(
     event: AstrMessageEvent, sub_ids: str, deps: dict
 ) -> dict:
-    """禁用订阅"""
-    user_id = event.get_sender_id()
-    current_session = event.unified_msg_origin
-
-    if sub_ids:
-        ids = [int(x.strip()) for x in sub_ids.split(",") if x.strip().isdigit()]
-        if not ids:
-            return {"plain": "请提供订阅 ID 列表\n用法: /deactivate_subs 1,2,3"}
-        result = await deps["batch_deactivate_cmd"].execute(
-            sub_ids=ids, user_id=user_id
-        )
-    else:
-        result = await deps["batch_deactivate_cmd"].execute_by_session(
-            user_id=user_id,
-            current_session=current_session,
-        )
-    return {"plain": result.message}
+    """Compatibility wrapper for persistent disabling."""
+    return await handle_unpush(event, sub_ids, deps)
 
 
 async def handle_unsub_all(event: AstrMessageEvent, scope: str, deps: dict) -> dict:

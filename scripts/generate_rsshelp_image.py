@@ -197,6 +197,8 @@ def parse_main_commands(main_py: Path) -> list[CommandDoc]:
                 continue
 
             cmd = _extract_str_arg(dec)
+            if cmd in {"sub_state", "activate_subs", "deactivate_subs"}:
+                continue  # Legacy names remain accepted; keep the help focused.
             aliases = _extract_aliases(dec)
             docs.append(
                 CommandDoc(
@@ -262,11 +264,11 @@ def _group_commands(cmds: list[CommandDoc]) -> list[dict]:
     for c in sorted(cmds, key=sort_key):
         if c.command.startswith("sub_profile") or c.command.startswith("sub_session"):
             groups["配置命令"].append(c)
-        elif c.command.startswith("sub_test"):
+        elif c.command.startswith("sub_test") or c.command == "feed":
             groups["管理员"].append(c)
         elif (
-            c.command.startswith("sub_status")
-            or c.command.startswith("sub_stop")
+            c.command.startswith("push_status")
+            or c.command.startswith("push_cancel")
             or c.command.startswith("sub_export")
             or c.command.startswith("sub_import")
             or c.command.startswith("rsshelp")

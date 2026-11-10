@@ -1,6 +1,6 @@
 name: astrbot_plugin_rsshub
 display_name: RSS订阅（无AI裁剪版）
 desc: 基于原版的多平台RSS订阅推送插件，保留数据库、去重、失败重试与管理页面，移除AI处理器和知识库。
-version: v2.1.4+lite.1
+version: v2.1.4+lite.2
 author: FlanChanXwO / Yuma
 astrbot_version: ">=4.24.0"

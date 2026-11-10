@@ -5,7 +5,7 @@
 ## 保留的功能
 
 - RSS、Atom、JSON Feed 订阅，支持完整 URL 和 RSSHub 路由。
-- 订阅增删、列表、批量启停、用户/会话默认配置、TOML 导入导出。
+- 订阅增删、分页列表、持续启停、最新 N 条即时发送、用户/会话默认配置、TOML 导入导出。
 - 原版定时调度、条件 GET、首次跳过历史、指纹去重与成功投递幂等。
 - 原版会话发送队列、平台适配、图文媒体处理、失败降级与重试。
 - 基础管理页面：订阅、用户、Feed、推送历史、默认设置和数据管理。
@@ -40,29 +40,33 @@ python -m pip install -r data/plugins/astrbot_plugin_rsshub/requirements.txt
 ```text
 /sub /163/ds/5b00c224c7de46d98d33a6e0722ce28f
 /sub_list
-/sub_test 1
-/sub_state 1 off
-/sub_state 1 on
+/feed 1 3
+/unpush 1
+/push 1
 ```
 
-ID `1` 请替换为列表中的实际订阅 ID。也可以 `/sub https://你的实例/163/ds/用户ID`。本版沿用原版命令，不提供之前独立实现的 `/动态`、`/rss_on` 或内置名称快捷源；查看 Feed 当前条目可使用管理页面，管理员可用 `/sub_test` 发送最新一条。
+ID `1` 请替换为列表方括号中的实际订阅 ID。也可以 `/sub https://你的实例/163/ds/用户ID`。新订阅默认启用；`/feed 1 3` 由管理员即时发送最新 3 条，从新到旧排列。它允许重复查看，不改变自动推送开关或去重水位。本版不提供之前独立实现的 `/动态`、`/rss_on` 或内置名称快捷源。
 
-`/sub_stop` 只停止正在运行/排队的任务；要持续停用订阅，请用 `/sub_state <ID> off` 或 `/deactivate_subs`。权限规则同原版，测试推送、全局删除和全量导出要求 AstrBot 管理员。
+`/push`、`/unpush` 持续启停自己在当前会话的订阅，支持 `1,3,4` 或 `all`。`/push_status` 只显示当前正在运行或排队的发送任务；`/push_cancel` 取消本次任务，后续更新仍会推送。管理员权限用于 `/feed`、测试推送、全局删除和全量导出。
 
 | 命令 | 用途 |
 | --- | --- |
 | `/sub <URL或路由>` | 新增订阅，支持批量 |
 | `/unsub <ID或URL>` | 取消订阅 |
-| `/sub_list` | 当前会话订阅列表 |
-| `/sub_state <ID> on/off` | 单项启停 |
-| `/activate_subs`、`/deactivate_subs` | 当前会话批量启停 |
-| `/sub_status`、`/sub_stop` | 查看/停止当前发送任务 |
+| `/sub_list [page] [page_size]` | 当前会话自己的订阅；默认每页 5 条 |
+| `/push <ID[,ID...]\|all>`、`/unpush <ID[,ID...]\|all>` | 持续启用、停用自动推送 |
+| `/feed <订阅ID> <N>` | 管理员即时发送最新 N 条 |
+| `/push_status`、`/push_cancel [job_id\|feed_id\|all]` | 查看、取消本次发送任务 |
 | `/sub_profile`、`/sub_session` | 用户、订阅及会话配置 |
 | `/sub_export`、`/sub_import` | TOML 导出和导入 |
 | `/sub_test <ID或URL>` | 管理员测试推送最新一条 |
 | `/rsshelp` | 命令帮助图 |
 
 完整说明见 [命令](docs/usage/commands.md)、[配置](docs/usage/configuration.md)、[管理页面](docs/usage/plugin-pages.md)。
+
+`/sub_profile set sub 1 style 2` 修改已有订阅，`/sub_profile set user style 2` 设置该用户的默认排版。发送选项按订阅 → 用户 → 全局默认逐字段继承，`-100` 恢复继承。`/sub_session set style 2` 仅作为当前会话**以后新建订阅**的模板，不修改已有订阅。实际抓取间隔请设订阅 `interval`；用户 `interval` 当前不参与调度。全局默认值在管理页面保存后需要重载插件。
+
+排版 `0` 自动、`1` RSSRT、`2` 原始顺序中，RSSRT 当前与自动共用链路；原始顺序仅在 OneBot、QQ Official、Weixin 专用发送器有对应布局时生效，详细显示边界见[排版说明](docs/usage/configuration.md#排版-style-实际行为)。旧 `/sub_state`、`/activate_subs`、`/deactivate_subs`、`/sub_status`、`/sub_stop` 保留兼容入口。
 
 ## 数据与兼容
 

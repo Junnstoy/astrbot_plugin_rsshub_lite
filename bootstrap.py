@@ -28,6 +28,7 @@ from .src.application.commands import (
     UnsubscribeFeedCommand,
     UpdateSubscriptionCommand,
 )
+from .src.application.commands.push_feed_cmd import PushFeedCommand
 from .src.application.queries import (
     GetFeedItemsQuery,
     GetFeedListQuery,
@@ -95,6 +96,7 @@ class PluginDeps(TypedDict, total=False):
     get_user_settings_cmd: GetUserSettingsCommand
     set_user_settings_cmd: SetUserSettingsCommand
     test_sub_cmd: TestSubscriptionCommand
+    push_feed_cmd: PushFeedCommand
     get_subs_query: GetSubscriptionsQuery
     get_items_query: GetFeedItemsQuery
     search_feeds_query: SearchFeedsQuery
@@ -445,6 +447,13 @@ async def _build_dependencies(
             feed_repo=feed_repo,
             polling_service=polling_service,
             notification_dispatcher=notification_dispatcher,
+        ),
+        push_feed_cmd=PushFeedCommand(
+            subscription_repo=sub_repo,
+            feed_repo=feed_repo,
+            polling_service=polling_service,
+            notification_dispatcher=notification_dispatcher,
+            user_repo=user_repo,
         ),
         get_subs_query=GetSubscriptionsQuery(subscription_repo=sub_repo),
         get_items_query=GetFeedItemsQuery(feed_repo=feed_repo),

@@ -5,9 +5,12 @@ from __future__ import annotations
 from astrbot.api.event import AstrMessageEvent
 
 from ...application.services.session_push_queue import SessionPushQueue
+from .config import _get_session_defaults
 
 
-async def handle_sub(event: AstrMessageEvent, url: str, deps: dict) -> dict:
+async def handle_sub(
+    event: AstrMessageEvent, url: str, deps: dict, *, ctx=None
+) -> dict:
     """订阅 RSS 源"""
     if not url:
         return {"plain": "请提供 RSS 源的 URL\n用法: /sub <url>"}
@@ -17,10 +20,21 @@ async def handle_sub(event: AstrMessageEvent, url: str, deps: dict) -> dict:
     platform_name = event.get_platform_name()
 
     url_list = [u.strip() for u in url.split() if u.strip()]
-    valid_urls = [u for u in url_list if u.startswith(("http://", "https://"))]
+    valid_urls = [
+        u
+        for u in url_list
+        if u.startswith(("http://", "https://"))
+        or (u.startswith("/") and not u.startswith("//"))
+    ]
 
     if not valid_urls:
-        return {"plain": "请提供有效的 RSS 链接（需以 http 或 https 开头）"}
+        return {"plain": "请提供 http(s) RSS 链接或以 / 开头的 RSSHub 路由"}
+
+    options = {}
+    if ctx is not None:
+        defaults = await _get_session_defaults(ctx, target_session)
+        if defaults:
+            options["session_defaults"] = defaults
 
     if len(valid_urls) == 1:
         result = await deps["subscribe_cmd"].execute(
@@ -28,6 +42,7 @@ async def handle_sub(event: AstrMessageEvent, url: str, deps: dict) -> dict:
             user_id=user_id,
             target_session=target_session,
             platform_name=platform_name,
+            **options,
         )
         return {"plain": result.message}
 
@@ -38,6 +53,7 @@ async def handle_sub(event: AstrMessageEvent, url: str, deps: dict) -> dict:
             user_id=user_id,
             target_session=target_session,
             platform_name=platform_name,
+            **options,
         )
         results.append(r)
 
@@ -98,16 +114,23 @@ async def handle_sub_list(event: AstrMessageEvent, args: str, deps: dict) -> dic
 
     page = 1
     page_size = 5
+    if len(arg_parts) > 2:
+        return {"plain": "分页参数过多。用法: /sub_list [页码] [每页数量]"}
     if arg_parts:
         try:
-            page = max(1, int(arg_parts[0]))
+            page = int(arg_parts[0])
         except ValueError:
             return {"plain": "分页参数无效。用法: /sub_list [page] [page_size]"}
     if len(arg_parts) >= 2:
         try:
-            page_size = max(1, min(int(arg_parts[1]), 100))
+            page_size = int(arg_parts[1])
         except ValueError:
             return {"plain": "分页参数无效。用法: /sub_list [page] [page_size]"}
+
+    if page < 1 or not 1 <= page_size <= 100:
+        return {
+            "plain": "页码必须大于 0，每页数量必须在 1～100 之间。示例: /sub_list 2 10"
+        }
 
     result = await deps["get_subs_query"].execute(user_id=user_id)
     if not result.subscriptions:
@@ -143,6 +166,10 @@ async def handle_sub_list(event: AstrMessageEvent, args: str, deps: dict) -> dic
         lines.append(f"{i}. [{sub.id}] {state_icon} {feed_title}{custom_title}")
         if sub.feed_link:
             lines.append(f"    {sub.feed_link}")
+    lines.append("方括号内是订阅 ID；✓ 自动推送已启用，✗ 已停用。")
+    lines.append("启停: /push <ID>、/unpush <ID>；立即发送: /feed <ID> <N>")
+    if page < total_pages:
+        lines.append(f"下一页: /sub_list {page + 1} {page_size}")
     return {"plain": "\n".join(lines)}
 
 
@@ -196,7 +223,9 @@ def handle_sub_status(event: AstrMessageEvent, queue: SessionPushQueue) -> dict:
     current_session = event.unified_msg_origin
     jobs = queue.get_jobs(current_session)
     if not jobs:
-        return {"plain": "当前会话没有推送任务"}
+        return {
+            "plain": "当前会话没有正在发送或排队的任务。\n这不代表订阅已停用；自动推送开关请看 /sub_list。"
+        }
 
     lines = [f"当前会话任务数: {len(jobs)}"]
     for idx, job in enumerate(jobs, start=1):
@@ -205,19 +234,20 @@ def handle_sub_status(event: AstrMessageEvent, queue: SessionPushQueue) -> dict:
             f" | feed_id={job.feed_id if job.feed_id is not None else '未知'}"
         )
         lines.append(f"{idx}. {job.status} | job_id={job.job_id} | {feed_label}")
-    lines.append("可用: /sub_stop <job_id|feed_id|all>")
+    lines.append("取消本次任务: /push_cancel <job_id|feed_id|all>")
+    lines.append("持续停用自动推送: /unpush <订阅ID|all>")
     return {"plain": "\n".join(lines)}
 
 
 async def handle_sub_state(
-    event: AstrMessageEvent, sub_id_str: str, deps: dict
+    event: AstrMessageEvent, sub_id_str: str, deps: dict, *, queue=None
 ) -> dict:
     """订阅状态管理"""
     if not sub_id_str:
         return {"plain": "用法: /sub_state <订阅ID> on/off\n示例: /sub_state 123 on"}
 
     parts = sub_id_str.split()
-    if len(parts) < 2:
+    if len(parts) != 2:
         return {"plain": "用法: /sub_state <订阅ID> on/off\n示例: /sub_state 123 on"}
 
     try:
@@ -235,8 +265,8 @@ async def handle_sub_state(
             "plain": "不支持的状态值，请使用: on/off, true/false, yes/no, y/n, 1/0, 开启/关闭"
         }
 
-    user_id = event.get_sender_id()
-    result = await deps["sub_state_cmd"].execute(
-        sub_id=sub_id, user_id=user_id, enable=enable
-    )
-    return {"plain": result.message}
+    from .batch import handle_push, handle_unpush
+
+    if enable:
+        return await handle_push(event, str(sub_id), deps)
+    return await handle_unpush(event, str(sub_id), deps, queue=queue)

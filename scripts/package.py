@@ -5,7 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "astrbot_plugin_rsshub"
-VERSION = "2.1.4-lite.1"
+VERSION = "2.1.4-lite.2"
 DIRECTORIES = ("src", "pages", "assets", "docs", "scripts")
 FILES = (
     "main.py",

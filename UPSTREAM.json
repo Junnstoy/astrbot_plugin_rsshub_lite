@@ -5,13 +5,10 @@
   "preserved_source_sha256": {
     "src/__init__.py": "735ae651e7b56ef86a1fa9cc0405992b46c09c9170e116de51e29ca5dfdb4233",
     "src/application/commands/__init__.py": "433c03ec9d2c68f57c33d3a3a6089e19ccedabf847cbb62c243dc2828656ff61",
-    "src/application/commands/batch_activate_cmd.py": "c58da14b80d87d4cde3a20037bd2c6f3e7e760c9f62aa93ff366b53238793abe",
-    "src/application/commands/batch_deactivate_cmd.py": "458d9be598e6bc32428256d801b366641ed32579a28f8d3dbd78bd2fe2fbfb97",
     "src/application/commands/batch_unsubscribe_cmd.py": "7e90b01deb7295039e9d6652e7596668646a1fac7180b3f4d1a5bdec18d3729e",
     "src/application/commands/export_subscriptions_cmd.py": "c7ed5ab2343ce0322075eb5f504b23129c1aa543a31ad8a27d0ece7788ecd66a",
     "src/application/commands/help_image_cmd.py": "af4e0b8789340acb1675eec58018306a6f740d4768643f59edd31eb401ae7a4b",
     "src/application/commands/import_subscriptions_cmd.py": "30999a3052aeb160f68a16f0d9ac6fc8fffc848f2d8825ff329c9604a3268c48",
-    "src/application/commands/sub_state_cmd.py": "c6952428e0f830fe181dfa0da92bf9a69695f1359181982fb10a3aac90399c10",
     "src/application/commands/unsubscribe_feed_cmd.py": "2dccf2ff70861664e7b4d170e950d6213da6d7c6f73a17bc0ef14e3c661d314e",
     "src/application/dto/__init__.py": "88a0521ea91cb254622e0a51cc6bc10f0bd6bd84d34ffd55489e9a01dc0fb3c3",
     "src/application/dto/feed_dto.py": "2aea087260980d4177de4e15cb425972f2a04c9fb5d1eb4b3fb072737c1e9151",
@@ -118,9 +115,7 @@
     "src/infrastructure/utils/paths.py": "4371efad72b91b13dbe16bd0bb011b6fc05648863109b032db1448997e1bebfa",
     "src/interfaces/__init__.py": "c8192b639b7e0eb49e03be6b2a7e33faf913b3a27c9b0f142330aa36abf84f44",
     "src/interfaces/handlers/admin.py": "1b210389b7b3be2c18143ccad04c8c75c04104fe4228016a0dfb8850880cfc4c",
-    "src/interfaces/handlers/batch.py": "9f7dda57cd0cdcd25c05c069b56df8c6159501d2b8a924b5e42e92429c3bfc71",
     "src/interfaces/handlers/data.py": "ae1ee704f4ed4e31e66e71539984e88372abece7f9d1b90092a2d4e83a9e3a12",
-    "src/interfaces/handlers/subscription.py": "ffa2e3a63cc8ec38ecbcce0de5ba88dd185a35f9850dec31a6a063e9d9c16db7",
     "src/shared/__init__.py": "be000567d21834c8b250c75641047d96d57dea7beb2ec8d4019ca3e63b408f83"
   }
 }
