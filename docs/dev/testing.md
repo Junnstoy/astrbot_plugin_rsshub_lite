@@ -28,6 +28,8 @@ RSSHUB_RUN_NETWORK_TESTS=1 uv run python -m pytest data/plugins/astrbot_plugin_r
 uv pip install --python .venv/bin/python -r data/plugins/astrbot_plugin_rsshub_lite/requirements-dev.txt
 ```
 
+Windows 开发与 CI 环境会通过 `requirements-dev.txt` 安装 `tzdata`，为标准库 `ZoneInfo` 提供 IANA 时区数据。帮助图时区回归必须能解析 `Asia/Shanghai`；缺少时区数据会进入命令已有的本地时间 fallback，不能通过放宽日夜图片断言来绕过。此依赖只补齐独立测试环境，不修改运行时依赖或帮助图逻辑。
+
 ## 分层验证矩阵
 
 | 改动类型 | 最小检查 | 建议额外回归 | 关注点 |

@@ -14,6 +14,8 @@ pydantic>=2,<3
 quart>=0.20
 httpx>=0.27
 loguru>=0.7
+# Windows 没有系统 IANA 时区库，供 ZoneInfo 时区回归使用
+tzdata; sys_platform == "win32"
 
 # 帮助图生成脚本
 jinja2>=3.1.6
