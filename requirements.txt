@@ -1,0 +1,13 @@
+# feed parsing - RSS 解析核心
+feedparser>=6.0.11
+
+# HTML 解析与表格结构提取
+beautifulsoup4>=4.13.4
+lxml>=5.4.0
+
+# 表格转图片与媒体校验
+pillow>=11.3.0
+filetype>=1.2.0
+
+# Telegraph SOCKS 代理支持
+aiohttp-socks>=0.10.1

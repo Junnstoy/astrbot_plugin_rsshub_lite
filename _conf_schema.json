@@ -1,0 +1,377 @@
+{
+  "basic_config": {
+    "type": "object",
+    "description": "基础设施配置",
+    "hint": "启动级去重、队列与订阅策略配置",
+    "items": {
+      "rsshub_base_url": {
+        "type": "string",
+        "description": "默认订阅域名",
+        "hint": "用于相对路由拼接的默认域名，当使用uri方式订阅时生效",
+        "default": "https://rsshub.app"
+      },
+      "minimal_interval": {
+        "type": "int",
+        "description": "订阅最小监控间隔（分钟）",
+        "hint": "限制单个订阅监控间隔的最小值",
+        "default": 1,
+        "slider": {
+          "min": 1,
+          "max": 1440,
+          "step": 1
+        }
+      },
+      "hash_history_min": {
+        "type": "int",
+        "description": "去重历史最小保留数量",
+        "hint": "单个 Feed 的去重哈希最小保留数",
+        "default": 200,
+        "slider": {
+          "min": 1,
+          "max": 20000,
+          "step": 50
+        }
+      },
+      "hash_history_multiplier": {
+        "type": "int",
+        "description": "去重历史增长倍数",
+        "hint": "按抓取条目数扩展去重窗口的倍数",
+        "default": 2,
+        "slider": {
+          "min": 1,
+          "max": 100,
+          "step": 1
+        }
+      },
+      "hash_history_hard_limit": {
+        "type": "int",
+        "description": "去重历史硬上限",
+        "hint": "单个 Feed 的去重哈希上限",
+        "default": 5000,
+        "slider": {
+          "min": 1,
+          "max": 20000,
+          "step": 100
+        }
+      },
+      "tracking_query_params": {
+        "type": "list",
+        "description": "链接去重时忽略的查询参数",
+        "hint": "用于清理常见追踪参数",
+        "default": [
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_term",
+          "utm_content",
+          "utm_id",
+          "gclid",
+          "fbclid",
+          "mc_cid",
+          "mc_eid",
+          "spm",
+          "ref",
+          "ref_src"
+        ]
+      },
+      "failed_queue_capacity": {
+        "type": "int",
+        "description": "失败队列容量",
+        "hint": "平台发送失败时的队列容量",
+        "default": 50,
+        "slider": {
+          "min": 0,
+          "max": 1000,
+          "step": 10
+        }
+      },
+      "failed_queue_max_retries": {
+        "type": "int",
+        "description": "失败队列最大重试次数",
+        "hint": "失败消息的最大重试次数",
+        "default": 3,
+        "slider": {
+          "min": 0,
+          "max": 10,
+          "step": 1
+        }
+      },
+      "deduplicate_multi_bot": {
+        "type": "bool",
+        "description": "单会话多 BOT 去重",
+        "hint": "同会话多 BOT 订阅相同源时是否去重",
+        "default": true
+      },
+      "bootstrap_skip_history": {
+        "type": "bool",
+        "description": "首轮跳过历史条目",
+        "hint": "首次监控是否跳过历史条目",
+        "default": true
+      },
+      "history_entry_limit": {
+        "type": "int",
+        "description": "历史条目推送限制",
+        "hint": "单次推送的历史条目上限",
+        "default": 0,
+        "slider": {
+          "min": 0,
+          "max": 500,
+          "step": 1
+        }
+      }
+    }
+  },
+  "http_config": {
+    "type": "object",
+    "description": "HTTP 网络配置",
+    "hint": "控制 RSS 拉取、媒体下载与 FFmpeg HLS 下载使用的代理和超时",
+    "items": {
+      "proxy": {
+        "type": "string",
+        "description": "代理地址",
+        "hint": "HTTP/SOCKS 代理地址，留空表示直连；裸 host:port 会按 http://host:port 处理",
+        "default": ""
+      },
+      "timeout": {
+        "type": "int",
+        "description": "请求超时（秒）",
+        "hint": "拉取 RSS 源和普通 HTTP 请求的超时",
+        "default": 30,
+        "slider": {
+          "min": 1,
+          "max": 300,
+          "step": 1
+        }
+      },
+      "media_timeout": {
+        "type": "int",
+        "description": "媒体下载超时（秒）",
+        "hint": "媒体预下载、m3u8/HLS 合并与 FFmpeg 下载的最大等待时间",
+        "default": 300,
+        "slider": {
+          "min": 1,
+          "max": 1800,
+          "step": 1
+        }
+      }
+    }
+  },
+  "media": {
+    "type": "object",
+    "description": "媒体配置",
+    "hint": "控制媒体反代、预下载并发、表格转图和 FFmpeg 转码",
+    "items": {
+      "image_relay_base_url": {
+        "type": "string",
+        "description": "图片反代 Base URL",
+        "hint": "用于图片预下载的反代地址，支持 https://wsrv.nl/ 或 https://wsrv.nl/?url=；留空关闭",
+        "default": ""
+      },
+      "media_relay_base_url": {
+        "type": "string",
+        "description": "媒体反代 Base URL",
+        "hint": "用于非图片媒体或图片反代未配置时的通用反代地址，例如 https://relay.example/；留空关闭",
+        "default": ""
+      },
+      "media_download_concurrency": {
+        "type": "int",
+        "description": "媒体预下载并发数",
+        "hint": "同一条推送内远程媒体预下载并发数，1 表示保持串行",
+        "default": 1,
+        "slider": {
+          "min": 1,
+          "max": 32,
+          "step": 1
+        }
+      },
+      "cache_enabled": {
+        "type": "bool",
+        "description": "启用媒体与转码缓存",
+        "hint": "控制远程媒体、表格图片、GIF/压缩 GIF 与视频 MP4 转码缓存是否启用",
+        "default": true
+      },
+      "cache_ttl_seconds": {
+        "type": "int",
+        "description": "媒体与转码缓存 TTL（秒）",
+        "hint": "远程媒体、表格图片、GIF/压缩 GIF 与视频 MP4 转码缓存的保留时间，单位：秒",
+        "default": 900,
+        "slider": {
+          "min": 60,
+          "max": 604800,
+          "step": 60
+        }
+      },
+      "table_to_image": {
+        "type": "bool",
+        "description": "表格转图片",
+        "hint": "开启后 HTML 表格优先渲染为图片；关闭后直接使用文本表格 fallback",
+        "default": true
+      },
+      "video_transcode": {
+        "type": "bool",
+        "description": "视频发送前自动转码",
+        "hint": "发送视频前是否自动转码为兼容 MP4",
+        "default": false
+      },
+      "video_transcode_timeout": {
+        "type": "int",
+        "description": "视频转码超时（秒）",
+        "hint": "视频转码的最大允许时间",
+        "default": 120,
+        "slider": {
+          "min": 10,
+          "max": 1800,
+          "step": 10
+        }
+      },
+      "gif_transcode": {
+        "type": "bool",
+        "description": "无声视频自动转 GIF",
+        "hint": "无声视频是否自动转 GIF",
+        "default": false
+      },
+      "gif_transcode_timeout": {
+        "type": "int",
+        "description": "GIF转换超时（秒）",
+        "hint": "视频转 GIF 的最大允许时间",
+        "default": 60,
+        "slider": {
+          "min": 10,
+          "max": 1800,
+          "step": 10
+        }
+      },
+      "gif_transcode_profile": {
+        "type": "string",
+        "description": "GIF 转码质量档位",
+        "hint": "compatibility：长边 960px、15 FPS、128 色；balanced：1280px、20 FPS、256 色；quality：保留原尺寸、30 FPS、256 色，可能导致高分辨率视频耗尽内存",
+        "default": "compatibility",
+        "options": [
+          "compatibility",
+          "balanced",
+          "quality"
+        ]
+      },
+      "ffmpeg_source": {
+        "type": "string",
+        "description": "FFmpeg 来源",
+        "hint": "auto=优先系统 PATH，系统缺失时自动下载捆绑 ffmpeg；system=仅使用系统 PATH，不下载",
+        "default": "auto",
+        "options": [
+          "auto",
+          "system"
+        ]
+      },
+      "ffmpeg_mirror": {
+        "type": "string",
+        "description": "FFmpeg 下载镜像",
+        "hint": "auto=自动测速选最快镜像；国内可选手动 ghfast/ghproxy 等，国外保持 default",
+        "default": "auto",
+        "options": [
+          "auto",
+          "default",
+          "ghfast",
+          "ghproxy",
+          "mirror_ghproxy",
+          "gh_proxy",
+          "custom"
+        ]
+      },
+      "ffmpeg_mirror_custom_url": {
+        "type": "string",
+        "description": "自定义镜像前缀",
+        "hint": "ffmpeg_mirror=custom 时使用；填完整前缀，例如 https://ghfast.top/ 或 https://your-mirror.example/",
+        "default": ""
+      }
+    }
+  },
+  "sender_strategies": {
+    "type": "object",
+    "description": "平台发送策略配置",
+    "hint": "选择启用专用发送策略的平台；未选择的平台使用默认发送器。平台策略使用一个统一模板列表按需添加，模板类型可不同；同类模板当前只读取第一条。",
+    "items": {
+      "enabled_platforms": {
+        "type": "list",
+        "description": "启用的平台发送策略",
+        "hint": "选择需要启用专用发送策略的平台；未选择的平台使用默认发送器",
+        "default": [
+          "telegram",
+          "aiocqhttp",
+          "qq_official"
+        ],
+        "options": [
+          "telegram",
+          "aiocqhttp",
+          "qq_official"
+        ],
+        "items": {
+          "type": "string"
+        }
+      },
+      "platform_strategies": {
+        "type": "template_list",
+        "description": "平台策略模板",
+        "hint": "按需添加 Telegram / OneBot / QQ 官方策略模板；同类模板当前只读取第一条，多条同类模板会被忽略。",
+        "default": [],
+        "templates": {
+          "telegram_strategy": {
+            "name": "Telegram 策略",
+            "hint": "Telegraph 自动分流策略",
+            "items": {
+              "telegraph_proxy": {
+                "type": "string",
+                "description": "Telegraph API 代理",
+                "hint": "仅用于 Telegraph createPage API，留空表示直连且不继承 HTTP 网络代理；裸 host:port 会按 http://host:port 处理",
+                "default": ""
+              },
+              "enable_telegraph": {
+                "type": "bool",
+                "description": "启用 Telegraph 自动分流",
+                "default": false
+              },
+              "telegraph_token": {
+                "type": "string",
+                "description": "Telegraph Access Token",
+                "default": ""
+              }
+            }
+          },
+          "onebot_strategy": {
+            "name": "OneBot 策略",
+            "hint": "OneBot / NapCat 视频发送策略",
+            "items": {
+              "napcat_stream_mode": {
+                "type": "string",
+                "description": "NapCat 流式上传",
+                "hint": "disabled=不用流式上传，fallback=普通发送失败后流式重试，always=发送前优先流式上传。",
+                "default": "fallback",
+                "options": [
+                  "disabled",
+                  "fallback",
+                  "always"
+                ]
+              }
+            }
+          },
+          "qq_official_strategy": {
+            "name": "QQ 官方策略",
+            "hint": "QQ 官方 Markdown 发送策略",
+            "items": {
+              "markdown_mode": {
+                "type": "string",
+                "description": "Markdown 发送模式",
+                "hint": "auto 跟随平台默认；force 强制 Markdown；plain 强制纯文本",
+                "default": "auto",
+                "options": [
+                  "auto",
+                  "force",
+                  "plain"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
